@@ -42,7 +42,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Compile Python sources
-        run: uv run --frozen --no-sync python -m compileall llm_agent tests
+        run: uv run --frozen --no-sync python -m compileall llm_agent tests automation
 
       - name: Lint
         run: >-
@@ -57,6 +57,7 @@ jobs:
           tests/fake_implementations/demo_mcp_client.py
           tests/unit/demo
           tests/thin_integration/demo
+          automation
 
       - name: Check formatting
         run: >-
@@ -71,6 +72,7 @@ jobs:
           tests/fake_implementations/demo_mcp_client.py
           tests/unit/demo
           tests/thin_integration/demo
+          automation
 
   tests:
     name: runtime and contract tests
@@ -95,7 +97,32 @@ jobs:
         run: uv sync --frozen
 
       - name: Run pytest
-        run: uv run --frozen --no-sync pytest
+        run: uv run --frozen --no-sync pytest tests
+
+  automation-tests:
+    name: repository automation tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.3"
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Run repository automation tests
+        run: uv run --frozen --no-sync pytest automation/tests
 
   container-smoke:
     name: production container smoke
@@ -106,24 +133,80 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.12.3"
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
       - name: Build production image
         run: docker build --target prod --tag movie-reservation-agent:ci .
 
-      - name: Start production image
-        id: container
-        run: echo "id=$(docker run --detach --publish 8080:8080 movie-reservation-agent:ci)" >> "$GITHUB_OUTPUT"
+      - name: Verify local deterministic workflow
+        run: bash automation/container_smoke.sh movie-reservation-agent:ci
 
-      - name: Verify health endpoint
+  publish-image:
+    name: publish immutable GHCR image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - quality
+      - tests
+      - automation-tests
+      - container-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish single-platform image
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: ./llm_agent
+          target: prod
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Create explicit build provenance
+        id: attest
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: false
+
+      - name: Report immutable candidate
+        working-directory: .
         run: |
-          for attempt in {1..30}; do
-            if curl --fail --silent --show-error http://127.0.0.1:8080/health; then
-              exit 0
-            fi
-            sleep 1
-          done
-          docker logs "${{ steps.container.outputs.id }}"
-          exit 1
-
-      - name: Stop production image
-        if: always()
-        run: docker stop "${{ steps.container.outputs.id }}"
+          echo "### Reservation agent candidate" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Provenance: ${{ steps.attest.outputs.attestation-url }}" >> "$GITHUB_STEP_SUMMARY"

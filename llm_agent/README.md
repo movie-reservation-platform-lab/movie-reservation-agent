@@ -24,6 +24,15 @@ bounded calls and status polling with `DEMO_MCP_TIMEOUT_SECONDS`,
 `DEMO_RESERVATION_POLL_ATTEMPTS`, and
 `DEMO_RESERVATION_POLL_INTERVAL_SECONDS`.
 
+The production container runs as UID `10001`. Pushes to `main` publish a Linux
+AMD64 candidate to GHCR as `sha-<commit>`. CI disables BuildKit's automatic
+registry attestation to keep the candidate a single-image manifest, then
+records explicit GitHub build provenance against the published digest for the
+environment admission gate.
+
+The container smoke uses task-local FastMCP fakes to exercise the full
+deterministic happy path without an LLM, cloud credentials, or external API.
+
 Incoming `traceparent`, `tracestate`, `X-Correlation-Id`, and `X-Request-Id`
 values are propagated to MCP calls. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export
 agent traces through OTLP/HTTP.

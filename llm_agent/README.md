@@ -1,5 +1,33 @@
 # Service
 
+## Reservation demo runtime
+
+The production image starts the isolated demo composition on port `8080`. It
+does not require the legacy OIDC or PostgreSQL dependencies.
+
+- `GET /health`: container health check.
+- `GET /api/v1/demo/health`: public demo health check.
+- `POST /api/v1/demo/reserve-recommended-seat`: deterministic recommendation
+  and reservation workflow used by the frontend agent panel.
+
+The workflow calls the frozen MCP tools in this order:
+
+1. `recommendation_get_movies`
+2. `reservation_get_catalog`
+3. `reservation_request_seats`
+4. `reservation_get_request_status`
+
+The two MCP sidecars default to `http://127.0.0.1:8091/mcp` and
+`http://127.0.0.1:8092/mcp`. Override them with
+`MOVIE_RESERVATION_MCP_URL` and `MOVIE_RECOMMENDATION_MCP_URL`. Configure the
+bounded calls and status polling with `DEMO_MCP_TIMEOUT_SECONDS`,
+`DEMO_RESERVATION_POLL_ATTEMPTS`, and
+`DEMO_RESERVATION_POLL_INTERVAL_SECONDS`.
+
+Incoming `traceparent`, `tracestate`, `X-Correlation-Id`, and `X-Request-Id`
+values are propagated to MCP calls. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export
+agent traces through OTLP/HTTP.
+
 ## Health checks
 Periodically executing a check against a dummy endpoint (you can define more advanced checks)
 ```json

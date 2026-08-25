@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: llm_agent
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Compile Python sources
+        run: uv run --frozen --no-sync python -m compileall llm_agent tests
+
+      - name: Lint
+        run: >-
+          uv run --frozen --no-sync ruff check
+          llm_agent/demo
+          llm_agent/demo_app.py
+          llm_agent/infrastructure/mcp
+          llm_agent/services/demo
+          llm_agent/api/http/v1/dto/demo.py
+          llm_agent/api/http/v1/routes/demo.py
+          llm_agent/core/telemetry.py
+          tests/fake_implementations/demo_mcp_client.py
+          tests/unit/demo
+          tests/thin_integration/demo
+
+      - name: Check formatting
+        run: >-
+          uv run --frozen --no-sync ruff format --check
+          llm_agent/demo
+          llm_agent/demo_app.py
+          llm_agent/infrastructure/mcp
+          llm_agent/services/demo
+          llm_agent/api/http/v1/dto/demo.py
+          llm_agent/api/http/v1/routes/demo.py
+          llm_agent/core/telemetry.py
+          tests/fake_implementations/demo_mcp_client.py
+          tests/unit/demo
+          tests/thin_integration/demo
+
+  tests:
+    name: runtime and contract tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Run pytest
+        run: uv run --frozen --no-sync pytest
+
+  container-smoke:
+    name: production container smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build production image
+        run: docker build --target prod --tag movie-reservation-agent:ci .
+
+      - name: Start production image
+        id: container
+        run: echo "id=$(docker run --detach --publish 8080:8080 movie-reservation-agent:ci)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify health endpoint
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8080/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "${{ steps.container.outputs.id }}"
+          exit 1
+
+      - name: Stop production image
+        if: always()
+        run: docker stop "${{ steps.container.outputs.id }}"

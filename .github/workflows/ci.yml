@@ -49,6 +49,11 @@ jobs:
           uv run --frozen --no-sync ruff check
           llm_agent/demo
           llm_agent/demo_app.py
+          llm_agent/application/audit
+          llm_agent/infrastructure/audit
+          llm_agent/api/http/audit_context.py
+          llm_agent/api/http/v1/dto/demo_auth.py
+          llm_agent/api/http/v1/routes/demo_auth.py
           llm_agent/infrastructure/mcp
           llm_agent/services/demo
           llm_agent/api/http/v1/dto/demo.py
@@ -64,6 +69,11 @@ jobs:
           uv run --frozen --no-sync ruff format --check
           llm_agent/demo
           llm_agent/demo_app.py
+          llm_agent/application/audit
+          llm_agent/infrastructure/audit
+          llm_agent/api/http/audit_context.py
+          llm_agent/api/http/v1/dto/demo_auth.py
+          llm_agent/api/http/v1/routes/demo_auth.py
           llm_agent/infrastructure/mcp
           llm_agent/services/demo
           llm_agent/api/http/v1/dto/demo.py

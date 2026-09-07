@@ -37,6 +37,11 @@ Incoming `traceparent`, `tracestate`, `X-Correlation-Id`, and `X-Request-Id`
 values are propagated to MCP calls. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export
 agent traces through OTLP/HTTP.
 
+The optional authentication audit demo adds `POST /demo/auth/login` when
+`DEMO_AUTH_ENABLED=true` and explicit demo credentials are supplied. It emits
+OCSF to stdout for FireLens routing; it does not issue sessions or change the
+reservation workflow. See [setup, event fields, and delivery limits](../docs/architecture/audit-authentication-demo.md).
+
 ## Health checks
 Periodically executing a check against a dummy endpoint (you can define more advanced checks)
 ```json

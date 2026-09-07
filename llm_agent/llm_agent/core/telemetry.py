@@ -42,7 +42,13 @@ def configure_telemetry() -> None:
 
     if not _TELEMETRY_CONFIGURED:
         provider = TracerProvider(
-            resource=Resource.create({"service.name": os.getenv("OTEL_SERVICE_NAME", "movie-reservation-agent")})
+            resource=Resource.create(
+                {
+                    "service.name": os.getenv("OTEL_SERVICE_NAME", "movie-reservation-agent"),
+                    "service.version": os.getenv("SERVICE_VERSION", "unknown"),
+                    "deployment.environment.name": os.getenv("DEPLOYMENT_ENVIRONMENT", "local"),
+                }
+            )
         )
         if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter

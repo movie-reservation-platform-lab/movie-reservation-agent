@@ -34,6 +34,7 @@ packages = ["llm_agent"]
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26,<5",
     "ipython>=9.2.0",
     "pudb>=2025.1",
     "pytest>=8.3.5",

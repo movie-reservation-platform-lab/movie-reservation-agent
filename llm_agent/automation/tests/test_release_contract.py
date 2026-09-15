@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +16,13 @@ def test_production_image_is_locked_and_non_root() -> None:
     assert "USER appuser" in DOCKERFILE
     assert "EXPOSE 8080" in DOCKERFILE
     assert "http://127.0.0.1:8080/health" in DOCKERFILE
+    production = DOCKERFILE.split("FROM python-runtime AS prod", 1)[1]
+    assert "COPY --from=build --chown=10001:10001 /venv /venv" in production
+    assert "ca-certificates tini perl-base" in production
+    assert "COPY --from=uv" not in production
+    assert "COPY --from=build /app" not in production
+    assert "curl" not in production
+    assert "pip uninstall -y pip" in production
 
 
 def test_container_smoke_uses_local_mcp_fakes_and_happy_path() -> None:
@@ -39,8 +47,8 @@ def test_publication_is_main_only_gated_and_attested() -> None:
     assert "attestations: write" in publish_job
     assert "platforms: linux/amd64" in publish_job
     assert "provenance: false" in publish_job
-    assert "actions/attest-build-provenance@" in publish_job
-    assert "push-to-registry: false" in publish_job
+    assert "/actions/container-evidence@" in publish_job
+    assert "digest: ${{ steps.build.outputs.digest }}" in publish_job
     assert "pull_request_target:" not in WORKFLOW
 
 
@@ -66,3 +74,79 @@ def workflow_job(name: str) -> str:
         len(lines),
     )
     return "\n".join(lines[start:end])
+
+
+def test_shared_evidence_has_pinned_identity_and_precedes_no_quality_gate() -> None:
+    publish_job = workflow_job("publish-image")
+    assert "github.repository == 'movie-reservation-platform-lab/movie-reservation-agent'" in publish_job
+    assert "cancel-in-progress: ${{ github.event_name == 'pull_request' }}" in WORKFLOW
+    assert "persist-credentials: false" in publish_job
+    assert "component: reservation-agent" in publish_job
+    assert "tags: ${{ steps.candidate.outputs.image_ref }}:${{ steps.candidate.outputs.tag }}" in publish_job
+    assert publish_job.index("/actions/prepare-container-candidate@") < publish_job.index("docker/login-action@")
+    assert publish_job.index("docker/build-push-action@") < publish_job.index("/actions/container-evidence@")
+    references = re.findall(r"uses: (\S+)", WORKFLOW)
+    assert all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", reference) for reference in references)
+    shared_pins = [
+        reference.split("@")[1] for reference in references if "/movie-platform-actions/actions/" in reference
+    ]
+    assert len(shared_pins) == 2 and shared_pins[0] == shared_pins[1]
+    assert set(shared_pins) == {"bb40579c285df0b581c48b10f9b34574d5c78639"}
+    assert "evidence-version: v1alpha3" in publish_job
+    assert f"ref: {shared_pins[0]}" in workflow_job("container-security-check")
+    assert "aws-actions/" not in WORKFLOW
+
+
+def test_pr_security_gate_uses_shared_policy_without_publication_permissions() -> None:
+    security_job = workflow_job("container-security-check")
+
+    assert "pull_request:" in WORKFLOW
+    assert "github.event_name != 'push' || github.ref != 'refs/heads/main'" in security_job
+    assert "github.repository != 'movie-reservation-platform-lab/movie-reservation-agent'" in security_job
+    assert "- quality" in security_job
+    assert "- automation-tests" in security_job
+    assert "permissions:\n      contents: read" in security_job
+    assert ": write" not in security_job
+    assert "docker/login-action" not in security_job
+    assert "push: true" not in security_job
+    assert security_job.count("persist-credentials: false") == 2
+    assert "node-version: '24'" in security_job
+    assert "--platform linux/amd64 --target prod" in security_job
+    assert "node .platform-actions/local-tools/container-security/lib/scan.mjs" in security_job
+    assert "--evidence-version v1alpha3 --component reservation-agent" in security_job
+    assert security_job.count("GH_TOKEN:") == 1
+    assert security_job.index("GH_TOKEN:") > security_job.index("docker build")
+    assert "continue-on-error" not in security_job
+    assert "|| true" not in security_job
+    assert "aquasecurity/trivy-action" not in security_job
+
+
+def test_pr_security_diagnostics_survive_policy_failure_and_are_not_candidate_evidence() -> None:
+    security_job = workflow_job("container-security-check")
+
+    assert security_job.index("lib/scan.mjs") < security_job.index("actions/upload-artifact@")
+    assert "if: ${{ !cancelled() }}" in security_job
+    assert '--output-dir "$RUNNER_TEMP/reservation-agent-pr-security"' in security_job
+    assert "path: ${{ runner.temp }}/reservation-agent-pr-security/" in security_job
+    assert "name: reservation-agent-pr-vulnerability-report-" in security_job
+    assert "if-no-files-found: error" in security_job
+    assert "retention-days: 14" in security_job
+    assert "attest-build-provenance" not in security_job
+    assert "container-evidence@" not in security_job
+
+
+def test_pr_jobs_cannot_publish_or_mask_build_failures() -> None:
+    before_publish = WORKFLOW.split("  publish-image:", 1)[0]
+    assert ": write" not in before_publish
+    for forbidden in ("push: true", "docker/login-action", "docker push", "container-evidence@"):
+        assert forbidden not in before_publish
+    security = workflow_job("container-security-check")
+    assert "working-directory: ." in security
+    assert "shell: bash" in security  # Explicit bash uses -e -o pipefail in Actions.
+    assert "movie-reservation-agent:pr-security llm_agent" in security
+    assert 'tee "$RUNNER_TEMP/reservation-agent-pr-security/build.log"' in security
+    assert 'tee "$RUNNER_TEMP/reservation-agent-pr-security/scan.log"' in security
+    smoke = workflow_job("container-smoke")
+    assert "if: ${{ !cancelled() }}" in smoke
+    assert "actions/upload-artifact@" in smoke
+    assert "reservation-agent-smoke/" in smoke

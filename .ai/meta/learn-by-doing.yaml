@@ -1,0 +1,3 @@
+type: skill
+skillName: learn-by-doing
+description: "Use on explicit request for strict learning mode where the AI plans, scaffolds, tests, reviews, and hints, but requires the human to implement core logic."

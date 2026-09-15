@@ -1,4 +1,56 @@
-# Service
+# llm_agent package
+
+FastAPI package workspace for `movie-reservation-agent`.
+
+The package currently contains the service scaffold, authentication
+infrastructure, DI wiring, in-memory run orchestration, and legacy example
+routes. The root README describes the movie reservation agent target and the
+reuse/delete/defer map.
+
+## Quick Start
+
+From this directory:
+
+```shell
+uv sync
+uv run pytest
+uv run ruff check .
+uv run --env-file ../configuration/local_or_ide/local_development.env python manage.py
+```
+
+Focused orchestration test:
+
+```shell
+uv run pytest tests/thin_integration/test_agent_run_orchestration.py -k "run_executed_successfully"
+```
+
+## Current Routes
+
+- `GET /api/v1/health/dummy-health`
+- `POST /api/v1/agent/runs`
+- `GET /api/v1/agent/runs/{run_id}`
+- `POST /api/v1/agent/runs/{run_id}/cancel`
+- `GET /api/v1/agent/runs/{run_id}/events`
+- `POST /api/v1/throttle/calculate_throttle_steps` (legacy)
+
+The run routes are scaffolding for the future agent runtime boundary. The
+throttle route is legacy scaffold behavior and should not be expanded for the
+movie reservation product.
+
+## Package Boundaries
+
+- API and HTTP DTOs: `llm_agent/api/http/`
+- Application-facing context and ports: `llm_agent/application/`
+- Domain models and transition rules: `llm_agent/domain/`
+- Use-case orchestration: `llm_agent/services/`
+- Concrete infrastructure: `llm_agent/infrastructure/`
+- DI composition: `llm_agent/di/`
+- Worker/runtime experiments: `agent_run_worker/`, `contracts/`, `local_runtime/`
+- Tests and fakes: `tests/`
+
+Keep FastAPI, Piccolo, `svcs`, and concrete MCP/HTTP clients outside the domain
+layer. Wire concrete implementations through registrars at the composition
+boundary.
 
 ## Reservation demo runtime
 
@@ -25,7 +77,7 @@ bounded calls and status polling with `DEMO_MCP_TIMEOUT_SECONDS`,
 `DEMO_RESERVATION_POLL_INTERVAL_SECONDS`.
 
 The production container runs as UID `10001`. Pushes to `main` publish a Linux
-AMD64 candidate to GHCR as `sha-<commit>`. CI disables BuildKit's automatic
+AMD64 candidate to GHCR as `sha-<commit>-run-<run-id>-attempt-<attempt>`. CI disables BuildKit's automatic
 registry attestation to keep the candidate a single-image manifest, then
 records explicit GitHub build provenance against the published digest for the
 environment admission gate.
@@ -42,78 +94,49 @@ The optional authentication audit demo adds `POST /demo/auth/login` when
 OCSF to stdout for FireLens routing; it does not issue sessions or change the
 reservation workflow. See [setup, event fields, and delivery limits](../docs/architecture/audit-authentication-demo.md).
 
-## Health checks
-Periodically executing a check against a dummy endpoint (you can define more advanced checks)
-```json
-{"event": "new request id has been created", "timestamp": "2025-09-08T17:11:06.045360Z", "service_name": "llm_agent_fastapi", "version": "0.1", "level": "info"}
-INFO:     127.0.0.1:44232 - "GET /api/v1/health/dummy-health HTTP/1.1" 200 OK
+
+### Container security evidence
+
+The pinned organization-owned actions publish the signed
+`reservation-agent-security-evidence-<run-id>-attempt-<attempt>` artifact:
+`component-candidate-evidence-v1alpha3.json`, verified image provenance,
+CycloneDX SBOM, and subject-bound vulnerability report. Evidence is retained
+for 14 days. Missing provenance, policy lookup errors or unexempted CRITICAL findings fail publication of the
+canonical evidence package; HIGH findings remain visible for admission review.
+
+Run/attempt tags are discovery hints, not deployment selectors. Environment
+verification independently checks the successful canonical run and signed
+package before admitting its exact digest to ECR. This producer has no AWS
+credentials or deployment authority. Older runs without this package are not
+eligible for the new admission path; use a fresh successful main run.
+See [the shared action contract](https://github.com/movie-reservation-platform-lab/movie-platform-actions/blob/bb40579c285df0b581c48b10f9b34574d5c78639/docs/container-candidate-actions.md).
+
+V3 keeps four canonical files and embeds the current central policy revision and
+evaluation in the candidate document. `vulnerability-policy.json` is a diagnostic
+file, not a fifth canonical evidence member. Main publication scans the published
+exact digest. The read-only `container-security-check` builds this repository’s
+production target on PRs and manual checks, scans its complete report, and retains
+build/scan/policy diagnostics for 14 days even after failure. It cannot push,
+sign or publish an image. HIGH findings remain visible and non-blocking here.
+
+### Local production verification
+
+From `llm_agent/`, with Docker and Node 24:
+
+```sh
+uv sync --frozen
+docker build --platform linux/amd64 --target prod -t movie-reservation-agent:local .
+bash automation/container_smoke.sh movie-reservation-agent:local ../.local-container-security/smoke
+# ACTIONS_CHECKOUT must be a checkout at bb40579c285df0b581c48b10f9b34574d5c78639.
+GH_TOKEN="$(gh auth token)" node "$ACTIONS_CHECKOUT/local-tools/container-security/lib/scan.mjs" \
+  movie-reservation-agent:local --evidence-version v1alpha3 --component reservation-agent \
+  --output-dir ../.local-container-security/scans
 ```
 
-# Development
-
-## Running from IDE
-To run in development mode in pycharm (or your preferred IDE) use: `[./configuration/local_or_ide/local_development.env](../configuration/local_or_ide/local_development.env)`
-and execute `llm_agent/manage.py` with that env file
-
-## Running from docker
-To run in development mode once the container the image is built (see the sections below), run
-
-To execute the service immediately:
-```shell
-docker run -it -p 8080:8080 \
-  --env-file "/home/patex1987/development/llm_agent_webapp/configuration/docker/local_development.env"  \
-  --rm \
-  fastapi_rest:local_dev
-```
-
-Output:
-```text
-{"event": "Uvicorn server configuration: host='0.0.0.0' port=8080 log_level='info' reload=True log_config_path='/app/llm_agent/configuration/log_config_json.json'", "timestamp": "2025-09-09T15:41:58.886552Z", "service_name": "llm_agent_fastapi", "version": "0.1", "level": "info"}
-{"event": "Will watch for changes in these directories: ['/app']", "timestamp": "2025-09-09T15:41:58.887500Z", "service_name": "llm_agent_fastapi", "version": "0.1", "level": "info"}
-{"event": "Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)", "timestamp": "2025-09-09T15:41:58.887729Z", "service_name": "llm_agent_fastapi", "version": "0.1", "level": "info"}
-{"event": "Started reloader process [7] using StatReload", "timestamp": "2025-09-09T15:41:58.887852Z", "service_name": "llm_agent_fastapi", "version": "0.1", "level": "info"}
-{"event": "Started server process [9]", "timestamp": "2025-09-09T15:42:00.231746Z", "service_name": "llm_agent_fastapi", "version": "0.1", "level": "info"}
-{"event": "Waiting for application startup.", "timestamp": "2025-09-09T15:42:00.231913Z", "service_name": "llm_agent_fastapi", "version": "0.1", "level": "info"}
-```
-
-To execute the container with a shell session:
-```shell
-docker run -it -p 8080:8080 \
-  --env-file "/home/patex1987/development/llm_agent_webapp/configuration/docker/local_development.env"  \
-  --rm \
-  fastapi_rest:local_dev \
-  /bin/bash
-```
-
-If you don't want to use the env vars, and run uvicorn directly and configure through cli args, check the Dockerfile for the commented out commands
-```dockerfile
-# ---------- dev (editable install) ----------
-#CMD ["uvicorn","llm_agent.app:create_app","--host","0.0.0.0","--port","8080","--reload","--log-config","./llm_agent/configuration/log_config_json.json","--factory"]
-CMD ["python", "manage.py"]
-
-# ---------- prod (lean runtime) ----------
-# ...
-#CMD ["uvicorn","llm_agent.app:create_app","--host","0.0.0.0","--port","8080","--log-config","./llm_agent/configuration/log_config_json.json","--factory"]
-CMD ["python", "manage.py"]
-```
-
-
-### Build in development mode
-
-1. Navigate to the `llm_agent` folder
-2. Execute:
-```shell
-docker build --target dev -t fastapi_rest:local_dev -f ./Dockerfile .
-```
-
-enter the container with non-running service:
-```shell
-docker run -it --rm fastapi_rest:local_dev /bin/bash 
-```
-
-### Build in production mode
-1. Navigate to the `llm_agent` folder
-2. Execute:
-```shell
-docker build --target prod -t fastapi_rest:local_prod -f ./Dockerfile .
-```
+Production runs the installed, non-editable application from `/venv`; uv, uvx,
+curl, pip and the `/app` source checkout are absent. Debian Trixie packages are
+refreshed for scan-identified fixes. The Python health check replaces curl.
+Smoke uses local MCP fakes on ports 8091/8092 and agent port 8080; ensure they are
+available. It retains the response, container inspection, agent/fake logs and exit
+status, including on failure, while cleaning up its container and fake processes.
+Local/PR diagnostics are not signed canonical evidence or environment admission.

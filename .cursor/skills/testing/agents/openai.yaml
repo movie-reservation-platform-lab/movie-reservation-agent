@@ -1,7 +1,0 @@
-interface:
-  display_name: "Testing"
-  short_description: "Fake-first Python pytest guidance"
-  default_prompt: "Use $testing when creating or reviewing pytest tests, fakes, fixtures, async tests, FastAPI API tests, or svcs DI test wiring."
-
-policy:
-  allow_implicit_invocation: true

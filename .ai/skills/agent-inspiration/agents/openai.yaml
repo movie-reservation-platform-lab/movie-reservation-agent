@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Inspiration"
+  short_description: "Retrieve reviewed local agent patterns"
+  default_prompt: "Use $agent-inspiration to find relevant local agent-runtime patterns and translate them into this repository."

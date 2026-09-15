@@ -84,3 +84,23 @@ environment admission or AWS change is part of this validation.
 
 `/home/patex1987/Documents/programming_kb/patterns/Multi-Stage Python Container Builds with uv.md`
 informed compatible interpreter bases, isolated tooling and installed-image smoke.
+
+## Hosted PR validation
+
+[Run 34945595377](https://github.com/movie-reservation-platform-lab/movie-reservation-agent/actions/runs/34945595377)
+passed quality, runtime/contract tests, repository automation, production smoke
+and container-security-check on commit `6d472c37703263bd49d5b700b549fa1026c8c7bb`.
+Publication was skipped as expected for a PR.
+
+Downloaded [artifact 10387456194](https://github.com/movie-reservation-platform-lab/movie-reservation-agent/actions/runs/34945595377/artifacts/10387456194)
+and independently recomputed counts and report hash: **0 CRITICAL / 44 HIGH /
+47 MEDIUM / 57 LOW / 1 UNKNOWN**, zero exemptions. The hosted report has one
+fewer MEDIUM finding than the earlier local report; each result is recorded
+separately. Policy passed at `2026-09-15T08:12:14Z`, central revision
+`bb40579c285df0b581c48b10f9b34574d5c78639`. Report SHA-256:
+`7902dc77c6389bca8205a314f9a44593b67d4f21fa39ecea44ba6ebf0bad0c6e`.
+The full downloaded directory is retained under
+`.local-container-security/hosted-34945595377/`.
+
+Latest head validation and artifact references are maintained in
+[PR #17](https://github.com/movie-reservation-platform-lab/movie-reservation-agent/pull/17).

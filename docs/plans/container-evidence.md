@@ -84,7 +84,7 @@ Local changes included, generated tooling untracked, agent image built/smoked/sc
 - [x] Alternatives, security, reliability and rollback explicit.
 - [x] Ordered implementation and validation commands specified.
 - [x] Actual local image results recorded in `docs/knowledge/container-security-validation.md`.
-- [ ] Hosted PR checks and artifact inspected.
+- [x] Hosted PR checks and artifact inspected (run 34945595377); latest head validation is recorded in PR #17.
 
 ## 18. Handoff Prompt for Implementation Agent
 

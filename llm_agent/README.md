@@ -109,7 +109,22 @@ verification independently checks the successful canonical run and signed
 package before admitting its exact digest to ECR. This producer has no AWS
 credentials or deployment authority. Older runs without this package are not
 eligible for the new admission path; use a fresh successful main run.
-See [the shared action contract](https://github.com/movie-reservation-platform-lab/movie-platform-actions/blob/bb40579c285df0b581c48b10f9b34574d5c78639/docs/container-candidate-actions.md).
+See [the shared action contract](https://github.com/movie-reservation-platform-lab/movie-platform-actions/blob/036531133bcefd454b5afc0eb55f8ba0328901ea/docs/container-candidate-actions.md).
+
+The publisher and PR/local scanner use reviewed actions commit
+`036531133bcefd454b5afc0eb55f8ba0328901ea` from
+[actions PR #18](https://github.com/movie-reservation-platform-lab/movie-platform-actions/pull/18).
+Prepare receives `${{ github.token }}` for its authenticated canonical-main
+lookup through the publishing job's existing `contents: read` permission. The
+same release also bounds and sanitizes evidence failure handling and reports
+scanner cleanup failures; this migration is not only a token-input change.
+
+Hosted PR checks keep publication disabled, so they do not exercise prepare or
+prove canonical publication or universal private-repository access. After merge,
+use a new successful canonical main publication and admit that exact run; never
+reuse an older agent or canary run. Rollback reverts both publisher pins, the
+scanner checkout pin, and the prepare token input together. See the
+[adoption plan](../docs/plans/authenticated-prepare-adoption.md).
 
 V3 keeps four canonical files and embeds the current central policy revision and
 evaluation in the candidate document. `vulnerability-policy.json` is a diagnostic
@@ -127,7 +142,7 @@ From `llm_agent/`, with Docker and Node 24:
 uv sync --frozen
 docker build --platform linux/amd64 --target prod -t movie-reservation-agent:local .
 bash automation/container_smoke.sh movie-reservation-agent:local ../.local-container-security/smoke
-# ACTIONS_CHECKOUT must be a checkout at bb40579c285df0b581c48b10f9b34574d5c78639.
+# ACTIONS_CHECKOUT must be a checkout at 036531133bcefd454b5afc0eb55f8ba0328901ea.
 GH_TOKEN="$(gh auth token)" node "$ACTIONS_CHECKOUT/local-tools/container-security/lib/scan.mjs" \
   movie-reservation-agent:local --evidence-version v1alpha3 --component reservation-agent \
   --output-dir ../.local-container-security/scans

@@ -10,6 +10,7 @@ Supporting documents are grouped by purpose. Keep `README.md` and `DEVELOPMENT.m
 - [Re-scope Python scaffold into movie reservation agent runtime](plans/re-scope-python-scaffold-into-movie-reservation-agent-runtime.md)
 
 - [Container evidence and PR scanning plan](plans/container-evidence.md)
+- [Authenticated prepare adoption plan](plans/authenticated-prepare-adoption.md)
 
 ## Architecture
 

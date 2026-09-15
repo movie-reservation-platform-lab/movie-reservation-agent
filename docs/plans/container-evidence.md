@@ -1,5 +1,9 @@
 # Implementation Plan: agent container security evidence
 
+> The current shared tooling pin is superseded by the
+> [authenticated prepare adoption](authenticated-prepare-adoption.md). This
+> historical plan retains the exact revision used for issue #15 / PR #17.
+
 ## 1. Summary
 
 Resume #15 / PR #17 with reviewed actions bb40579c285df0b581c48b10f9b34574d5c78639, v1alpha3 evidence, a read-only PR production-image scan, and agent-specific image remediation.

@@ -1,381 +1,181 @@
 # Development Guide
 
-This document describes **how to work on the throttle sequencer service locally**, how DI works, 
-and how to work with the multi-database failover setup.
+This repository is the Python FastAPI agent runtime for the Movie Reservation
+Platform Lab. It is currently being re-scoped from a generic scaffold, so some
+commands and code paths still exist only as reusable examples or temporary
+legacy code.
 
----
-
-# 1. Project Structure Overview
+## 1. Project Structure
 
 Key folders:
 
+```text
+llm_agent/
+├── llm_agent/
+│   ├── api/                  # FastAPI HTTP routes, DTOs, mappers, middleware
+│   ├── application/          # request/auth context and application-facing ports
+│   ├── core/                 # logging, uvicorn config, telemetry hooks
+│   ├── di/                   # svcs composition and registrars
+│   ├── domain/               # pure domain models and transition rules
+│   ├── infrastructure/       # auth, db, discovery, execution-context adapters
+│   └── services/             # use-case orchestration services
+├── agent_run_worker/         # in-memory worker and execution experiments
+├── contracts/                # shared runtime contracts
+├── local_runtime/            # in-memory event log, run store, and queue
+└── tests/                    # unit, thin integration, fakes
 ```
-throttling_sequencer/
-├── api/
-│   ├── http/ (REST)
-│   ├── graphql/ (GraphQL + subscriptions)
-│   └── middlewares/
-├── core/ (logging, uvicorn config, telemetry)
-├── di/ (dependency injection setup)
-├── domain/ (pure business logic)
-├── infrastructure/
-│   └── db/ (Piccolo setup, migrations, repo)
-└── services/ (use cases)
-└── navigation/ (path finders, throttle logic)
-```
 
+Root-level folders such as `configuration/`, `docker-compose*.yml`,
+`keycloak_config/`, and `multi_db_configuration/` support local dependencies or
+scaffold-era experiments. Keep them until replacement issues decide whether to
+reuse, archive, or delete them.
 
----
-
-# 2. Running Locally (IDE)
-
-Prerequisites:
+## 2. Prerequisites
 
 - Python 3.12+
-- A running Postgres instance - as **database dependency is baked in to the code atm**
-  - there is an in-memory repository already available, which will be used fro local testing as a default in the future 
-- (Optional) Keycloak instance for JWT authentication - see section 2.1
-- Set the correct environment file: e.g. `configuration/local_or_ide/local_development.env`
+- `uv`, when using the checked-in lockfile workflow.
+- Optional Docker for Keycloak/Postgres/local dependency services.
+- Optional Keycloak when exercising authenticated flows.
 
-## 2.1. Keycloak Setup (Optional)
+Inspect `llm_agent/pyproject.toml` before changing dependency or tooling
+commands.
 
-For local development, Keycloak can be run via Docker Compose:
+## 3. Local Commands
 
-```bash
+For the production demo, run `uv run --frozen uvicorn llm_agent.demo_app:app --port 8080`
+from `llm_agent/`. This composition uses task-local MCP services and does not
+require the scaffold’s database/OIDC setup. See [production image verification](llm_agent/README.md#local-production-verification)
+for build, smoke and scan commands. The `manage.py` commands below exercise the
+legacy scaffold composition.
+
+
+Run package commands from `llm_agent/`:
+
+```shell
+cd llm_agent
+uv sync
+uv run pytest
+uv run ruff check .
+uv run --env-file ../configuration/local_or_ide/local_development.env python manage.py
+```
+
+Focused tests:
+
+```shell
+uv run pytest tests/thin_integration/test_agent_run_orchestration.py -k "run_executed_successfully"
+uv run pytest tests/thin_integration/test_canceled_runs.py
+```
+
+If the active environment is already prepared without `uv`, `pytest` can be run
+directly from `llm_agent/`.
+
+## 4. Local Dependencies
+
+Keycloak can be started with:
+
+```shell
 docker compose -f docker-compose.e2e.yml up keycloak
 ```
 
-or bring up all your dependencies except for the main service:
-```bash
+or with the dependency profile:
+
+```shell
 docker compose -f docker-compose.e2e.yml -f docker-compose.multi-db.dev.yml --profile dependencies up
 ```
 
-Keycloak will be available at `http://localhost:8082` with:
-- Realm: `throttling-test`
-- Admin console: `http://localhost:8082` (admin/admin)
-- Test users: `test-user` / `test-password` and `admin-user` / `admin-password`
+Local Keycloak defaults:
 
-To retrieve tokens for API testing, see `testing_payloads/keycloak_token_retrieval.md` and use the Python script:
+- URL: `http://localhost:8082`
+- Realm: `throttling-test` (legacy name, still used by local config)
+- Admin: `admin` / `admin`
+- Test users: `test-user` / `test-password`, `admin-user` / `admin-password`
 
-```bash
+Token helper:
+
+```shell
 python testing_payloads/get_keycloak_token.py
 ```
 
+The realm name and helper payloads should be renamed in a later cleanup issue
+after the agent contract is stabilized.
 
-Then:
+## 5. Running Docker Images
 
-```bash
-uv run --env-file=.../path/to/local_development.env python manage.py
+Build from `llm_agent/`:
+
+```shell
+docker build --target dev -t movie-reservation-agent:local_dev -f Dockerfile .
+docker build --target prod -t movie-reservation-agent:local_prod -f Dockerfile .
 ```
 
-ofc, you can execute it from your favorite IDE, with pointing to the right env file (e.g. pycharm)
-
-The server starts with:
-
-- auto-reload (if enabled via `uvicorn_reload=true`)
-- JSON logs  
-- DI-managed services  
-- Automatic Piccolo DB connection pool setup
-- Important refactor note: database dependency is baked in to the code atm, this must be refactored, otherwise the whole dependency injection doesn't make any sense 
-
----
-
-# 3. Running in Docker
-
-### 3.1. Build (Development Layer)
-
-Development mode means that the service is executed with uvicorn's hot reload
-
-```
-docker build --target dev -t fastapi_graphql:local_dev -f Dockerfile .
-```
-
-### 3.2. Run in development mode
+Run the development image from the repository root:
 
 ```shell
 docker run -it -p 8080:8080 \
   --env-file configuration/docker/local_development.env \
-  --network throttling_sequencer_webapp_default \
-  fastapi_graphql:local_dev
+  --rm \
+  movie-reservation-agent:local_dev
 ```
 
-```shell
-docker run -it -p 8080:8080 \
-  --env-file configuration/docker/local_development.multi_db.env \
-  --network throttling_sequencer_webapp_default \
-  fastapi_graphql:local_dev
+The Dockerfile still starts `python manage.py`. Uvicorn configuration is read
+from environment variables and `llm_agent/llm_agent/configuration/log_config_json.json`.
+
+## 6. Dependency Injection
+
+The project uses `svcs` as the composition boundary.
+
+- Registrars live under `llm_agent/llm_agent/di/registrars/`.
+- FastAPI lifespan integration lives in `llm_agent/llm_agent/di/fastapi_lifespan.py`.
+- `create_app_with_selected_di` supports production/default and test-selected
+  registrar sets.
+- Business/domain code should receive typed dependencies through constructors
+  or use-case services, not import `svcs` directly.
+
+When changing DI wiring, keep the dependency direction:
+
+```text
+API -> services/application -> domain/contracts <- infrastructure/local_runtime
 ```
 
-To enter a shell:
-
-```
-
-docker run -it --rm throttling_seq:local_dev /bin/bash
-
-````
-
----
-
-# 4. Dependency Injection
-
-This project uses **svcs** to provide:
-
-- clear separation of service implementations
-- easy mocking / swapping deps in tests
-- context-bound request scoping (FastAPI lifespan)
-
-### DI lifecycle
-
-Located in:  
-`throttling_sequencer/di/fastapi_lifespan.py`
-
-During startup:
-
-**As mentioned earlier the hard dependency on db has to be removed**
-```python
-await DB.start_connection_pool(...)
-adjust_registry(registry)
-````
-
-Example dependency registrations:
-
-* `PathFinder` → `GeneticPathFinder` (or RandomDummy)
-* `ThrottleStepsService`
-* `BaseGameStateRetriever`
-* `AsyncGqlRequestRepository` (Piccolo)
-* `PostgresEngine`
-
-GraphQL context is assembled via:
-
-```
-api/graphql/schema_entry/context_getter.py
-```
-
-Using:
-* `GqlOperationContext` - This enables fine-grained control over resolver access.
-
----
-
-# 5. Database Layer & Migrations
-
-If you decide to use a database for your repositories, you can use piccolo ORM for connecting to the db.
-
-### Connection
-
-Config via:
-
-```
-piccolo_db_host
-piccolo_db_user
-piccolo_db_password
-piccolo_db_port
-piccolo_db_run_migrations
-```
-
-### Migrations
-
-Stored under:
-
-```
-infrastructure/db/piccolo_throttling_sequencer_app/piccolo_migrations/
-```
-
-Run manually:
-
-```
-piccolo migrations forwards all
-```
-
-Or automatically if:
-
-```
-piccolo_db_run_migrations=true
-```
-
----
-
-# 6. Multi-Database Setup
-
-This topic is completely independent on the main logic. Multi-database setup is here to create an article
-about how to handle database failovers and to validate how the service behaves under such an event. 
-
-## 6.1 Local HAProxy Failover (Simulated)
-
-Script:
-
-```
-testing_payloads/multi_db_flip.sh
-```
-
-Requirements:
-
-* Two Postgres instances
-* HAProxy routing between them
-* pgbouncer in front (optional)
-
-Capabilities:
-
-* Drain a DB (simulate reader)
-* Promote the other DB (simulate writer)
-* Force both DBs into maintenance
-* Flip multiple times in a sequence
-
-Useful for testing:
-
-* asyncpg reconnects
-* retry logic in repositories
-* error handling during failover
-
----
-
-## 6.2 AWS Aurora Failover (Realistic)
-
-Script:
-
-```
-testing_payloads/aws_rds_port_forward_failover_sequence.sh
-```
-
-Features:
-
-* Uses SSM Session Manager for port forwarding
-* Automatically resolves the current writer instance
-* Restarts tunnels after failover
-* Supports multi-step failover testing
-* Logs the tunnel PID and state transitions
-
-Follow notes in:
-
-```
-testing_payloads/aws_failover_notes.md
-```
-
----
-
-# 7. GraphQL Development
-
-Endpoint:
-```
-http://localhost:8080/graphql
-```
-
-graphiql IDE is exposed under that endpoint (useful for graphql introspection)
-
-Features:
-
-* Query + Mutation
-* Subscriptions (WS + graphql-ws)
-* Auth via custom Strawberry extensions: `HttpAuthExtension`, `WsHttpAuthExtension`
-  * JWT tokens from Keycloak are validated using OpenID Connect discovery
-  * Please note that these field extensions are still under development
-* Request metadata collector (`RequestInfoCollectorExtension`)
-
-Authentication:
-
-* Bearer tokens (JWT) from Keycloak are supported
-* Retrieve tokens using: `python testing_payloads/get_keycloak_token.py`
-* See `testing_payloads/keycloak_token_retrieval.md` for details
-
-Subscription example:
-
-```
-python testing_payloads/gql_websocket.py
-```
-
----
-
-# 8. REST Development
-
-Example call with Basic auth (legacy):
-
-```
-curl -X POST -H "Authorization: Basic Z2Fib3I6eHl6" \
-     -H "Content-Type: application/json" \
-     -d @testing_payloads/game_state.json \
-     http://localhost:8080/api/v1/throttle/calculate_throttle_steps
-```
-
-Example call with Keycloak JWT token:
-
-```bash
-# Get token
-TOKEN=$(python testing_payloads/get_keycloak_token.py)
-
-# Use token in API call
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-     -H "Content-Type: application/json" \
-     -d @testing_payloads/game_state.json \
-     http://localhost:8080/api/v1/throttle/calculate_throttle_steps
-```
-
-Mappers:
-
-* HTTP layer → DTOs → Domain
-* Domain → UnitGoal → DTO response
-
----
-
-# 9. Logging & Telemetry
-
-Logging setup:
-
-* JSON logs via uvicorn log config
-* structlog processors:
-
-  * timestamp
-  * contextvars merger
-  * static fields (service, version)
-
-Middlewares enrich each request with:
-
-* request_id
-* user_id
-* (optional) trace_id if OTel enabled
-
-Telemetry hook exists at:
-
-```
-core/telemetry.py
-```
-
-(ready for OpenTelemetry integration)
-
----
-
-# 10. Useful Commands
-
-### Check package installation:
-
-```
-./package_sanity_check.sh
-```
-
-### Run genetic algorithm test:
-
-```
-python throttling_sequencer/services/navigation/runner_for_steps_test_to_delete.py
-```
-
----
-
-# 11. Contributing
-
-* Follow Python 3.12 best practices
-* Keep domain layer pure
-* Add new path-finders under `services/navigation/path_finders`
-* Add new GraphQL operations under `api/graphql/operations`
-* Use DI for all new services
-
----
-
-# 12. Future Improvements
-
-* Add fake auth providers for local dev (bypass Keycloak in development)
-* Add extended docker compose profiles:
-
-  * IDE mode
-  * local E2E mode
-  * containerized E2E
-* Improve migration triggering mechanism
-* Implement OpenTelemetry pipeline in `core/telemetry.py`
-
+## 7. Current Runtime APIs
+
+Current routes on `main`:
+
+- `GET /api/v1/health/dummy-health`
+- `POST /api/v1/agent/runs`
+- `GET /api/v1/agent/runs/{run_id}`
+- `POST /api/v1/agent/runs/{run_id}/cancel`
+- `GET /api/v1/agent/runs/{run_id}/events`
+- `POST /api/v1/throttle/calculate_throttle_steps` (legacy scaffold route)
+
+The `/api/v1/agent/runs` API is useful for validating the run orchestration
+scaffold. It is not yet the final browser/platform contract for the movie
+reservation demo. The throttle route is legacy and should be removed in a later
+cleanup issue.
+
+## 8. Testing Expectations
+
+- Add unit tests for pure domain/application changes.
+- Add thin integration tests for FastAPI routes, middleware, `svcs` wiring, and
+  HTTP DTO mapping.
+- For worker/run/event-log changes, assert both the event sequence and folded
+  current state.
+- For cancellation and leases, test cooperative checkpoint behavior and
+  terminal state projection.
+- For MCP integrations, start with fake MCP clients and add local end-to-end
+  smoke coverage once the demo services are wired.
+
+Documentation-only changes generally do not require runtime tests, but do
+require review of generated docs/guidance consistency.
+
+## 9. Multi-database Notes
+
+The HAProxy, pgbouncer, PostgreSQL failover scripts, AWS failover notes, and
+historical reports are scaffold-era infrastructure experiments. They are not
+part of the near-term movie reservation agent runtime unless a follow-up issue
+explicitly adopts them.
+
+## AI guidance
+
+Only `.ai/` is tracked. Run `bash .ai/sync.sh` after cloning or editing guidance
+to regenerate ignored assistant directories and root `AGENTS.md`.

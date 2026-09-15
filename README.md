@@ -1,672 +1,161 @@
-# Throttling Sequencer – FastAPI + Strawberry GraphQL Service
+# movie-reservation-agent
 
-This repository represents a boilerplate fastapi service leveraging `svcs` for dependency injection and both rest and gql endpoints (using `strawberry`)
-The code follows clean architecture best practices.
+Python FastAPI runtime for the movie reservation demo agent.
 
-The example service exposes **REST** and **GraphQL** APIs for computing throttle paths for game-like units.
-It also provides infrastructure for:
+This repository is being re-scoped from a generic LLM-agent scaffold into the
+agent component of the Movie Reservation Platform Lab. The agent is expected to
+sit between browser or platform callers and MCP/tool services, then coordinate
+movie recommendation and reservation workflows.
 
-- Multi-database setup with **Piccolo ORM + asyncpg**
-- DI-driven modular architecture using **svcs**
-- Real-time navigation updates via **GraphQL subscriptions**
-- Structured logging with **structlog**
-- Local development in IDE or Docker
-- Side topics: Demonstration for database failover simulations
-  - locally with HAProxy
-  - cloud based with AWS Aurora
+The proven local experiment is:
 
----
+```text
+browser -> Python agent -> recommendation MCP -> Rust recommendation API
+                        -> reservation MCP -> NestJS reservation API
+```
+
+That experiment is the recovery baseline for future implementation work. This
+repository currently contains reusable infrastructure and several legacy
+example areas, so do not assume every existing route or domain package is part
+of the target product.
+
+## Current Status
+
+The deterministic movie reservation demo is implemented in `llm_agent.demo_app`
+and is the production container entry point. It exposes `/health` and the
+recommendation/reservation workflow on port 8080, plus an opt-in authentication
+audit demo. See [runtime and container instructions](llm_agent/README.md).
+
+The repository also contains:
+
+- FastAPI service composition with `svcs` dependency injection.
+- OIDC/JWT authentication middleware and request execution context plumbing.
+- Structured logging and OpenTelemetry setup hooks.
+- Piccolo/PostgreSQL infrastructure scaffolding.
+- In-memory agent run orchestration, run event log, cancellation, worker, queue,
+  and fake-executor patterns.
+- Legacy throttle/game/navigation routes and domain models retained from the
+  scaffold.
+
+The original demo reference is `/home/patex1987/development/python-agent-with-idp`,
+branch `demo-multi-service-observability` at commit `73441fc`. Broader conversational
+agent behavior remains future work. CI checks the agent’s production image and
+publishes v1alpha3 candidate evidence only from canonical main pushes.
+
+## Runtime Role
+
+The movie reservation agent owns the conversational/runtime boundary for
+reservation assistance:
+
+- Accept browser or platform requests for an agent task or conversation turn.
+- Authenticate callers and preserve request/correlation context.
+- Dispatch work to an execution runtime instead of doing long-running work in
+  FastAPI request handlers.
+- Call MCP/tool services for recommendation and reservation actions.
+- Fold internal execution state into caller-safe API responses.
+- Emit structured logs/traces that connect browser, agent, MCP services, and
+  downstream APIs.
+
+The agent should remain the orchestrator. The reservation API owns reservation
+state, the recommendation API owns recommendation logic, and MCP wrappers own
+tool contracts to those services.
+
+## Runtime Non-goals
+
+This repository should not become:
+
+- The reservation system of record.
+- The recommendation engine.
+- A deployment manifest or environment promotion repository.
+- A direct replacement for service-specific MCP wrappers.
+- A place to keep the old throttle/game/navigation product behavior.
+- A broad platform control plane.
+
+## Reuse / Delete / Defer Map
+
+| Area | Decision | Notes |
+| --- | --- | --- |
+| `llm_agent/llm_agent/app.py`, `api/http/middlewares/`, `core/`, `di/` | Reuse | Keep FastAPI composition, request context, logging, telemetry hooks, and `svcs` wiring. |
+| `llm_agent/llm_agent/application/authentication/`, `domain/authentication/`, `infrastructure/authentication/` | Reuse | Keep OIDC/JWT validation infrastructure. Treat as security-sensitive. |
+| `llm_agent/llm_agent/api/http/v1/routes/health.py` | Reuse | Keep simple health behavior for platform checks. |
+| `llm_agent/llm_agent/services/agent/`, `domain/agent/runs/`, `agent_run_worker/`, `contracts/`, `local_runtime/` | Reuse and rename later | These are useful orchestration patterns. Future work should align vocabulary with the movie reservation agent boundary and the proven demo. |
+| `llm_agent/llm_agent/infrastructure/db/`, `repositories/piccolo/` | Defer | Useful for durable state later. Current issue does not add migrations or persistence behavior. |
+| `llm_agent/llm_agent/domain/game/`, `domain/grid/`, `domain/navigation/`, `domain/genetic_path/`, `infrastructure/navigation/`, `infrastructure/game/` | Delete later | Legacy scaffold/example product code. Keep only until replacement issues remove dependencies safely. |
+| `llm_agent/llm_agent/api/http/v1/routes/throttle_steps_calculator.py`, throttle DTOs/mappers/service/registrar | Delete later | Public throttle API is not part of the movie reservation agent target. |
+| Multi-database failover scripts and reports | Defer or archive | Useful as educational infrastructure reference, not core agent runtime. |
+| Original demo code in `/home/patex1987/development/python-agent-with-idp` | Reference only | Use to recover proven behavior; do not blindly copy code without fitting current boundaries. |
+
+## API Boundary
+
+Current public routes:
+
+- `GET /api/v1/health/dummy-health`
+- `POST /api/v1/agent/runs`
+- `GET /api/v1/agent/runs/{run_id}`
+- `POST /api/v1/agent/runs/{run_id}/cancel`
+- `GET /api/v1/agent/runs/{run_id}/events`
+- `POST /api/v1/throttle/calculate_throttle_steps` (legacy)
+
+Target caller boundary for the movie reservation agent:
+
+- Browser/platform callers interact with agent task or conversation resources,
+  not raw worker internals.
+- Internal execution ids, event logs, leases, and queue notifications remain
+  internal unless an explicit admin/debug API is designed.
+- Tool calls go through MCP clients/adapters and must preserve trace context.
+- API DTOs stay in `llm_agent/llm_agent/api/http/v1/dto/`, with mapping at the
+  API boundary.
+
+The exact target resource names are deferred to the follow-up implementation
+issue. The existing `/api/v1/agent/runs` routes are acceptable as a scaffold
+reference, but should not be treated as the final browser contract.
+
+## Local Development
+
+Work from the package directory:
+
+```shell
+cd llm_agent
+```
+
+Install/sync dependencies with the local environment tooling after inspecting
+`pyproject.toml`. In the current workspace, the expected commands are:
+
+```shell
+uv sync
+uv run pytest
+uv run ruff check .
+uv run --env-file ../configuration/local_or_ide/local_development.env python manage.py
+```
+
+Focused test example:
+
+```shell
+uv run pytest tests/thin_integration/test_agent_run_orchestration.py -k "run_executed_successfully"
+```
+
+Docker and dependency services remain documented in `DEVELOPMENT.md`. Some
+commands still reflect scaffold history and should be corrected when the
+corresponding runtime slice is stabilized.
+
+## Test Strategy
+
+Use the narrowest test that covers the changed boundary:
+
+- Pure domain/application behavior: unit tests with fake ports.
+- FastAPI routes, middleware, DI wiring, and HTTP mapping: thin integration
+  tests with `TestClient` or `httpx`.
+- Worker, cancellation, leases, queue wakeups, and event-log behavior: assert
+  emitted events and folded run/message state.
+- MCP/tool integrations: contract tests against fake MCP clients first, then
+  local end-to-end smoke tests against the demo services.
+- Documentation-only changes: no runtime tests required; verify generated
+  guidance and links are coherent.
 
 ## Documentation
 
-Supporting docs are organized under [`docs/`](docs/README.md), with architecture notes, implementation plans, reusable patterns, and project knowledge separated by purpose.
-
----
-
-## 1. High-Level Architecture
-
-```
-             ┌────────────────────────────────────────────┐
-             │                Presentation                │
-             │  - FastAPI (REST)                          │
-             │  - Strawberry GraphQL (HTTP + WS)          │
-             └────────────────────────────────────────────┘
-                              │
-                              ▼
-             ┌────────────────────────────────────────────┐
-             │             Application Layer              │
-             │  - GameState mappers (REST + GraphQL)      │
-             └────────────────────────────────────────────┘
-                              │
-                              ▼
-             ┌────────────────────────────────────────────┐
-             │         Service Layer (Use Cases)          │
-             │         Pure - No Infrastructure           │
-             │  - ThrottleStepsService                    │
-             │    (Orchestrates domain logic)             │
-             │    (DI injects dependencies, not service)  │
-             └────────────────────────────────────────────┘
-                              │
-                              ▼
-             ┌────────────────────────────────────────────┐
-             │           Domain Layer (Pure Python)       │
-             │  - GameState, Units, Coordinates           │
-             │  - Genetic Algorithm Path-Finder           │
-             │  - Random Path-Finder                      │
-             │  - AsyncGqlRequestRepository (Protocol)    │
-             └────────────────────────────────────────────┘
-                              ▲
-                              │
-             ┌────────────────────────────────────────────┐
-             │              Infrastructure Layer          │
-             │  - PiccoloGqlRequestRepository            │
-             │    (implements Protocol)                   │
-             │  - InMemoryGqlRequestRepository            │
-             │    (implements Protocol)                   │
-             │  - Piccolo ORM + Postgres                  │
-             │  - DI Registry (svcs)                      │
-             └────────────────────────────────────────────┘
-```
-
-example dependency injection demonstration:
-
-```mermaid
-graph TB
-    subgraph Presentation["Presentation Layer"]
-        FastAPI["FastAPI (REST)"]
-        GraphQL["Strawberry GraphQL<br/>(HTTP + WS)"]
-    end
-    
-    subgraph Application["Application Layer"]
-        Mappers["GameState mappers<br/>(REST + GraphQL)"]
-    end
-    
-    subgraph Service["Service Layer<br/>(Use Cases - Pure)"]
-        ThrottleService["ThrottleStepsService<br/>(Use Case Orchestration)"]
-    end
-    
-    subgraph Domain["Domain Layer<br/>(Pure Python)"]
-        Entities["GameState, Units, Coordinates"]
-        Algorithms["Genetic Algorithm Path-Finder<br/>Random Path-Finder"]
-        RepoProtocol["AsyncGqlRequestRepository<br/>(Protocol)"]
-    end
-    
-    subgraph Infrastructure["Infrastructure Layer"]
-        PiccoloRepo["PiccoloGqlRequestRepository"]
-        InMemRepo["InMemoryGqlRequestRepository"]
-        DB["Piccolo ORM + Postgres"]
-        DI["DI Registry (svcs)"]
-    end
-    
-    FastAPI --> Mappers
-    GraphQL --> Mappers
-    Mappers --> ThrottleService
-    ThrottleService --> Entities
-    ThrottleService --> Algorithms
-    ThrottleService -.->|depends on| RepoProtocol
-    RepoProtocol -.->|implemented by| PiccoloRepo
-    RepoProtocol -.->|implemented by| InMemRepo
-    PiccoloRepo --> DB
-    DI -.->|provides dependencies| ThrottleService
-    DI -.->|provides| PiccoloRepo
-    DI -.->|provides| InMemRepo
-    
-    classDef repoImpl fill:#e1f5ff,stroke:#01579b,stroke-width:2px
-    class PiccoloRepo,InMemRepo repoImpl
-```
-
-
-
----
-
-## 2. Technology Stack
-
-| Area | Technology |
-|------|------------|
-| Web Framework | **FastAPI** |
-| GraphQL | **Strawberry GraphQL** |
-| Authentication | **Keycloak** (JWT / OpenID Connect) |
-| Async DB | **asyncpg** |
-| ORM | **Piccolo ORM** |
-| Dependency Injection | **svcs** |
-| Logging | **structlog** + Python logging |
-| Runtime Server | **uvicorn** |
-| Deployment | Docker (dev/prod targets) |
-| Telemetry (placeholder) | OpenTelemetry API / SDK |
-| Testing / Simulation | HAProxy failover scripts + AWS Aurora failover scripts |
-
----
-
-## 3. Dependency Injection (svcs) – Architectural Overview
-
-This project uses **`svcs`** as a *lightweight, explicit dependency injection container* to enforce **Clean Architecture / Hexagonal Architecture boundaries** while keeping runtime wiring flexible.
-
-The DI setup is intentionally **boring and explicit**: no magic decorators, no implicit globals, no framework-driven injection into business logic.
-
-### 3.1 Why `svcs`?
-
-We use `svcs` because it:
-
-* Encourages **constructor-based dependency injection**
-* Keeps **application and domain layers framework-agnostic**
-* Makes dependencies **explicit and testable**
-* Integrates cleanly with **FastAPI lifespan**
-* Avoids service locators *inside* business logic
-
-Official reference:
-[https://github.com/hynek/svcs](https://github.com/hynek/svcs)
-
----
-
-### 3.2 High-Level DI Flow (Conceptual)
-
-At runtime, dependency resolution follows this direction:
-
-```
-FastAPI lifespan
-    ↓
-svcs.Registry (factories & values registered)
-    ↓
-svcs.Container (request / lifespan scoped)
-    ↓
-Application services (ThrottleStepsService, etc.)
-    ↓
-...
-```
-
-Key principle:
-
-> **Only the composition root knows about `svcs`.
-> Business logic never does.**
-
----
-
-### 3.3 Composition Root
-
-The **only place where dependencies are wired together** is the *composition root*:
-
-```
-throttling_sequencer/di/fastapi_lifespan.py
-throttling_sequencer/di/services.py
-```
-
-This is a deliberate design choice to keep all infrastructure knowledge localized.
-
-### 3.4 FastAPI Lifespan Integration
-
-`svcs` is integrated using FastAPI’s lifespan mechanism:
-
-```python
-@svcs.fastapi.lifespan
-async def di_lifespan(app: FastAPI, registry: svcs.Registry):
-    adjust_registry(registry)
-    yield
-```
-
-Responsibilities of the lifespan:
-
-* Start infrastructure resources (database pool)
-* Populate the DI registry
-* Shut down resources gracefully
-
-No business logic is executed here.
-
----
-
-### 3.5 Registry: Wiring, Not Logic
-
-The **registry** maps *abstractions to implementations*.
-
-Located in:
-
-```
-throttling_sequencer/di/services.py
-```
-
-Examples of what gets registered:
-
-* **Protocols → concrete implementations**
-* **Configuration objects → singleton values**
-* **Factories → services with dependencies**
-
-Important characteristics:
-
-* The registry contains **no business logic**
-* Factories are simple object constructors
-* Swapping implementations requires changing only the registry
-
-This enables easy replacement of:
-
-* Path-finding algorithms
-* Repositories (Piccolo ↔ in-memory)
-* Configuration strategies
-
----
-
-### 3.6 Dependency Direction (Clean Architecture)
-
-The DI setup strictly respects dependency direction:
-
-```
-API layer
-  → Application services
-      → Domain logic
-          ← Repository interfaces (Protocols)
-              ← Infrastructure implementations
-```
-
-Key points:
-
-* **Domain defines interfaces** (e.g. `AsyncGqlRequestRepository`)
-* **Infrastructure implements them**
-* **DI binds the two at runtime**
-* The domain never imports infrastructure
-* The service layer depends only on abstractions
-
-This is classic **hexagonal architecture (ports & adapters)**.
-
----
-
-### 3.7 Services Are Constructed, Not Looked Up
-
-Application services (e.g. `ThrottleStepsService`) receive dependencies **via constructors**, not via the container:
-
-```python
-class ThrottleStepsService:
-    def __init__(self, path_finder: PathFinder):
-        self.path_finder = path_finder
-```
-
-The service:
-
-* Does not know what `svcs` is
-* Does not know where `PathFinder` comes from
-* Is trivially testable with a fake or stub
-
-This avoids the *Service Locator anti-pattern*.
-
----
-
-### 3.8 Runtime Variability Without Code Changes
-
-Because dependencies are resolved at runtime:
-
-* You can switch path-finding strategies
-* You can replace repositories
-* You can use in-memory implementations for tests
-
-All **without changing application or domain code**.
-
-Only the registry changes.
-
----
-
-### 3.9 Non-FastAPI Usage (Explicit Container)
-
-For non-HTTP execution paths (scripts, experiments), the project exposes an **explicit container builder**:
-
-This is intentionally:
-
-* Explicit
-* Isolated from FastAPI
-* Useful for CLI tools or experiments
-* Helps us to avoid building dependency container monsters that are used for different purposes (e.g. you will use a smaller scope DI container for e2e tests than for the fastapi service)
-
-This does **not** affect the main FastAPI runtime.
-
----
-
-## 4. Running the Service
-
-### 4.1. Running locally from your IDE
-
-Use this env file:
-
-```
-configuration/local_or_ide/local_development.env
-```
-
-Run the service:
-
-```
-python llm_agent/manage.py
-````
-
-This executes `manage.py`, which:
-
-- Loads Uvicorn settings (`UvicornServerConfig`)
-- Loads JSON log config
-- Runs uvicorn in factory mode
-
-### 4.2. Running with Docker (Development Mode)
-
-Inside `llm_agent` run:
-
-```sh
-docker build --target dev -t throttling_seq:local_dev -f ./Dockerfile .
-````
-
-Run the container with local development env:
-
-```sh
-docker run -it -p 8080:8080 \
-  --env-file configuration/docker/local_development.env \
-  --rm throttling_seq:local_dev
-```
-
-To get a shell inside:
-
-```sh
-docker run -it --rm throttling_seq:local_dev /bin/bash
-```
-
-### 4.3. Running with Docker (Production Mode)
-
-```sh
-docker build --target prod -t throttling_seq:local_prod -f ./Dockerfile .
-docker run -p 8080:8080 throttling_seq:local_prod
-```
-
----
-
-## 5. Environment Files
-
-Different execution models require different env files:
-
-| Env file                             | Used for                          |
-| ------------------------------------ | --------------------------------- |
-| `local_or_ide/local_development.env` | Running from IDE                  |
-| `docker/local_development.env`       | Running from Docker dev container |
-| Production envs                      | Provided by infrastructure        |
-
-All env vars follow the pydantic-settings conventions:
-
-* `uvicorn_...` → configure uvicorn
-* `piccolo_...` → configure DB host/user/password
-* `piccolo_db_run_migrations=true` to auto-run Piccolo migrations
-
----
-
-## 6. Database Layer
-
-### ORM: Piccolo
-
-* Tables live under
-  `infrastructure/db/piccolo_throttling_sequencer_app`
-* Piccolo migrations run automatically if
-  `piccolo_db_run_migrations=true`
-
-### Connection Pool
-
-Pool config in
-`piccolo_throttling_sequencer_app/pool_config.py`
-
-### Repositories
-
-Two implementations exist:
-
-| Repository                     | When used                       |
-| ------------------------------ | ------------------------------- |
-| `PiccoloGqlRequestRepository`  | Default (real Postgres)         |
-| `InMemoryGqlRequestRepository` | Can be toggled in `services.py` |
-
----
-
-## 7. Multi-Database Setup + Failover
-
-This project has built-in tooling to simulate Postgres failovers.
-
-### Option A — HAProxy local failover
-
-Script:
-`testing_payloads/multi_db_flip.sh`
-
-You can:
-
-* Drain DB1 → promote DB2
-* Drain DB2 → promote DB1
-* Force both down
-* Bring up DBs in arbitrary order
-
-This is useful to validate:
-
-* asyncpg reconnect behavior
-* Piccolo connection pool rotation
-* Repository retry logic
-* Request routing stability
-
-### Option B — AWS Aurora Failover via SSM Bastion
-
-Scripts:
-
-* `aws_rds_port_forward_failover_sequence.sh`
-* Notes: `aws_failover_notes.md`
-
-Supports:
-
-* SSM port-forwarding from local machine → Bastion → Aurora cluster
-* Trigger Aurora failover via the AWS CLI
-* Automatically restart tunnels
-* Observe read/write node changes
-
----
-
-## 8. API Overview
-
-### Authentication
-
-The service supports JWT authentication via Keycloak:
-
-* **Keycloak Integration**: JWT tokens are validated using OpenID Connect discovery
-* **Token Retrieval**: Use `testing_payloads/get_keycloak_token.py` to get tokens programmatically
-* **Documentation**: See `testing_payloads/keycloak_token_retrieval.md` for details
-
-For local development, Keycloak runs via Docker Compose (port 8082) with test realm `throttling-test`.
-
-### REST (FastAPI)
-
-Base URLs:
-
-```
-/api/v1/health
-/api/v1/throttle/calculate_throttle_steps
-```
-
-Request body: `GameStateDto`
-Response: list of `UnitGoalDto`
-
-Authentication: Bearer token (JWT) in `Authorization` header
-
-### GraphQL (Strawberry)
-
-HTTP endpoint:
-
-```
-/graphql
-```
-
-Subscriptions via WebSocket:
-
-Supports both:
-
-* `graphql-ws`
-* `graphql-transport-ws`
-
-Authentication: Bearer token (JWT) in `Authorization` header
-
-Example subscription script:
-`testing_payloads/gql_websocket.py`
-
-### Agent Jobs and Cancellation
-
-The service supports asynchronous agent job execution with graceful cancellation:
-
-**Job Management Endpoints:**
-- `POST /api/v1/agent/create-job` - Create a new agent job
-- `GET /api/v1/agent/get-job-status/{job_id}` - Check job status
-- `POST /api/v1/agent/jobs/{job_id}/cancel` - Cancel a running job
-
-**Cancellation Behavior:**
-- **Checkpoint-based stopping**: Jobs stop gracefully after completing the current step/operation, ensuring atomic operations and preventing partial state
-- **Heartbeat detection**: Cancellation is detected via periodic heartbeats (default: 5-second intervals)
-- **Latency**: Cancellation is not immediate - there can be up to the heartbeat interval delay before detection, plus the time remaining in the current execution step
-- **Safety**: This approach ensures operations complete atomically and prevents data corruption
-
-**Job Cancellation Flow (Store-Driven Cancellation via `/cancel` endpoint):**
-
-```mermaid
-flowchart TB
-    Client[Client] -->|POST /api/v1/agent/jobs/job_id/cancel| API[FastAPI Route Handler<br/>cancel_agent_job]
-    
-    API -->|calls| Service[BackendJobOrchestrationService<br/>cancel_job]
-    
-    Service -->|calls| Store{Job Store<br/>mark_cancelled}
-    
-    Store -->|check| Terminal{Job already<br/>terminal?}
-    Terminal -->|Yes| Return1[Return False<br/>Already terminal]
-    Terminal -->|No| Update[Mark job as<br/>CANCELLED in store]
-    
-    Update -->|if successful| Queue[JobSignalQueue<br/>notify workers]
-    Update --> Return2[Return True<br/>Cancellation requested]
-    
-    Return1 --> Response[Return HTTP 200<br/>already_terminal status]
-    Return2 --> Response2[Return HTTP 200<br/>cancelled status]
-    
-    Queue -.->|wakes up| Worker[Worker Consumer Loop]
-    
-    Worker -->|executing job| Heartbeat[Heartbeat Loop<br/>runs every 5s]
-    
-    Heartbeat -->|calls| HeartbeatCheck[Job Store<br/>heartbeat]
-    
-    HeartbeatCheck -->|checks| Status{Job status<br/>CANCELLED?}
-    Status -->|No| Continue[Return RUNNING<br/>renew lease]
-    Status -->|Yes| Detect[Return CANCELLED<br/>status]
-    
-    Continue -->|wait 5s| Heartbeat
-    
-    Detect -->|detected| CancelCtx[Cancel Execution Context<br/>ctx.cancel]
-    
-    CancelCtx --> Executor[Job Executor]
-    
-    Executor -->|checks at checkpoint| Checkpoint{ctx.is_cancelled<br/>checkpoint?}
-    
-    Checkpoint -->|No| Step[Execute Current Step<br/>Complete operation]
-    Step -->|after step| Checkpoint
-    
-    Checkpoint -->|Yes| Stop[Return Gracefully<br/>Stop execution]
-    
-    Stop --> Cleanup[Worker: Log cancellation<br/>Do NOT mark as succeeded]
-    
-    Cleanup --> Final[Job remains CANCELLED<br/>in store - terminal state]
-    
-    style Client fill:#e1f5ff
-    style API fill:#fff3e0
-    style Service fill:#fff3e0
-    style Store fill:#f3e5f5
-    style Worker fill:#e8f5e9
-    style Heartbeat fill:#e8f5e9
-    style Executor fill:#e8f5e9
-    style Update fill:#ffebee
-    style Detect fill:#ffebee
-    style Final fill:#ffebee
-```
-
-**Flow Explanation:**
-
-1. **REST API (Backend)**:
-   - Client sends cancellation request to `/cancel` endpoint
-   - Route handler delegates to `BackendJobOrchestrationService.cancel_job()`
-   - Service calls `job_store.mark_cancelled()` to update job status to `CANCELLED`
-   - If job is already terminal, returns `False`; otherwise returns `True` after marking as cancelled
-   - On successful cancellation, sends notification via `JobSignalQueue` to wake up any waiting workers
-   - Returns HTTP 200 response indicating cancellation status
-
-2. **Worker (Background)**:
-   - Worker runs a heartbeat loop (every 5 seconds) while executing jobs
-   - Each heartbeat calls `job_store.heartbeat()` which checks if job status is `CANCELLED`
-   - When `CANCELLED` status is detected, heartbeat loop calls `job_execution_ctx.cancel()`
-   - This sets a cancellation event flag in the execution context
-
-3. **Job Executor**:
-   - Executor checks `job_execution_ctx.is_cancelled()` at checkpoints (between steps)
-   - If cancellation detected, executor completes the current step fully, then returns gracefully
-   - This ensures atomic operations - jobs never stop mid-step, preventing partial state
-
-4. **Completion**:
-   - After executor returns, worker checks if cancellation occurred
-   - If cancelled, worker logs the cancellation but does NOT mark job as succeeded
-   - Job remains in `CANCELLED` state (terminal, no retries)
-
-**Two Cancellation Paths:**
-
-1. **Store-driven cancellation** (explicit cancellation):
-   - Triggered via `POST /api/v1/agent/jobs/{job_id}/cancel` endpoint
-   - Marks the job as `CANCELLED` in the store immediately
-   - Worker detects cancellation at next heartbeat and stops execution at next checkpoint
-   - Job transitions to terminal `CANCELLED` state (no retries)
-
-2. **Worker shutdown cancellation**:
-   - Triggered when a worker gracefully shuts down (e.g., during deployment, scaling down)
-   - Only cancels the execution context (stops the executor from continuing)
-   - **Does NOT** mark the job as `CANCELLED` in the store
-   - Job remains `RUNNING` until its lease expires (default: 30 seconds)
-   - Lease expiration triggers automatic recovery: `TIMED_OUT` → `RETRYING` → `ENQUEUED`
-   - Job can then be picked up and retried by another worker
-   - This design ensures worker shutdowns don't permanently cancel jobs, allowing for automatic recovery and retry
-
-**Job Status Codes:**
-- `CREATED` → `ENQUEUED` → `RUNNING` → `SUCCEEDED` / `FAILED` / `CANCELLED` / `TIMED_OUT`
-- Jobs can be cancelled from `CREATED`, `ENQUEUED`, or `RUNNING` states
-- Once a job reaches a terminal state (`SUCCEEDED`, `FAILED`, `CANCELLED`), it cannot be cancelled
-
----
-
-## 9. Logging
-
-Structured logging with:
-
-* `structlog`
-* JSON logging via uvicorn’s config
-
-Every request is enriched with:
-
-* `request_id`
-* `user_id`
-* (optionally) trace_id if using OpenTelemetry
-
-Middleware:
-
-* `CustomAuthenticationMiddleware`
-* `LogContextMiddleware`
-
----
-
-## 10. Testing Payloads
-
-Inside `testing_payloads/`:
-
-| Script                                      | Purpose                                     |
-| ------------------------------------------- | ------------------------------------------- |
-| `gql_curl.sh`                               | Send GraphQL queries                        |
-| `gql_websocket.py`                          | Test GraphQL subscriptions                  |
-| `game_state.json`                           | Example REST payload                        |
-| `get_keycloak_token.py`                     | Retrieve Keycloak JWT tokens (Python)       |
-| `keycloak_token_retrieval.md`               | Keycloak authentication guide              |
-| `aws_rds_port_forward_failover_sequence.sh` | Run Aurora failover                         |
-| `multi_db_flip.sh`                          | Flip between local DB instances via HAProxy |
-| `graphql_api_poller.sh`                     | Stress test GraphQL endpoint                |
-
----
-
-## 11. Production Notes
-
-* Recommended: run behind HAProxy or Envoy
-* For Aurora: use cluster endpoint for write routing
-* Piccolo migrations should not be run automatically in prod
-* Configure OTel tracers inside `core/telemetry.py`
-
----
-
-## 12. License
-
-Internal project – no license defined yet.
+- Architecture notes live in `docs/architecture/`.
+- Implementation plans live in `docs/plans/`.
+- Durable project context and research notes live in `docs/knowledge/`.
+- Canonical AI guidance lives in `.ai/`; run `.ai/sync.sh` after editing it so
+  generated tool files stay consistent.

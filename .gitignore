@@ -10,3 +10,16 @@ wheels/
 # Virtual environments
 .venv
 
+
+# Generated from canonical .ai/ guidance; regenerate with bash .ai/sync.sh.
+.claude/
+.codex/
+.cursor/
+.gemini/
+.roo/
+/AGENTS.md
+.platform-actions/
+.local-container-security/
+security-evidence/
+.pytest_cache/
+.ruff_cache/

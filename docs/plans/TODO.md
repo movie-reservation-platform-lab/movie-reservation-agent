@@ -1,113 +1,103 @@
-# TODO - Application Status and Missing Features
+# TODO - Agent Runtime Status
+
+> Status update (2026-09-15): the deterministic demo composition and opt-in audit
+> endpoint are implemented. This document preserves the earlier re-scope design;
+> see `llm_agent/README.md` for current runnable behavior and
+> `docs/plans/container-evidence.md` for image/evidence work.
+
+
+Last reviewed: 2026-08-04
 
 ## Current State
 
-The application is **not yet ready for production**. Currently, it contains:
+`movie-reservation-agent` is not yet production-ready. The repository is being
+re-scoped from a generic FastAPI LLM-agent scaffold into the Python agent
+runtime for the Movie Reservation Platform Lab.
 
-### ✅ What's Implemented
+Implemented or reusable today:
 
-- **FastAPI Boilerplate**: A FastAPI application with clean architecture and dependency injection using `svcs`
-- **Token Verification Infrastructure**: 
-  - JWT token validation system that supports multiple OIDC providers (Keycloak, Entra ID, or any other OIDC-compliant provider)
-  - Token validation is wired through dependency injection, making it easy to swap providers
-  - Authentication middleware that validates tokens on incoming requests
-  - Support for both HTTP and WebSocket token extraction
-- **Dependency Injection**: Full DI setup using `svcs` with registrars for different components (auth, services, repositories)
-- **Database Layer**: Piccolo ORM integration with PostgreSQL (with in-memory alternatives for testing)
-- **Structured Logging**: Using `structlog` with request context enrichment
-- **Basic REST API**: Health check and throttle calculation endpoints
+- FastAPI application factory, middleware, and route registration.
+- `svcs` dependency injection and registrar composition.
+- OIDC/JWT validation infrastructure.
+- Request execution context and structured logging.
+- OpenTelemetry instrumentation hooks.
+- Piccolo/PostgreSQL scaffolding.
+- In-memory run orchestration, run event log, run signal queue, cancellation
+  intent, worker consumer, and fake executor tests.
+- Current health and agent run routes.
 
----
+Legacy or scaffold-era behavior:
 
-## ❌ Missing Features
+- Throttle calculation route.
+- Game/grid/navigation/genetic-path domain packages.
+- Some Keycloak realm names, payloads, and development examples.
+- Multi-database failover scripts and reports.
 
-### 1. Chainlit Integration
+## Missing For The Movie Reservation Demo
 
-**Status**: Not implemented
+### 1. Public Agent API Contract
 
-Chainlit integration is completely missing. The application needs:
+Status: Not designed.
 
-- Chainlit server setup and configuration
-- Integration of Chainlit with the existing FastAPI application
-- WebSocket support for Chainlit's real-time communication
-- Chainlit UI components and chat interface
-- Connection between Chainlit frontend and backend agent logic
+Define whether browser/platform callers use task resources,
+dialogue/message resources, or both. Keep internal execution ids, worker leases,
+raw event logs, and queue details out of the public contract unless an explicit
+admin/debug API is designed.
 
+### 2. Proven Demo Behavior Adoption
 
----
+Status: Not adopted on current `main`.
 
-### 2. PKCE Token Validation for Chainlit and Single Page App (SPA)
+Use `/home/patex1987/development/python-agent-with-idp` branch
+`demo-multi-service-observability` at commit `73441fc` as the reference
+baseline for the already-proven local flow:
 
-**Status**: Not implemented
-
-The current token verification only supports standard JWT Bearer token validation. Missing:
-
-- **PKCE (Proof Key for Code Exchange)** flow implementation
-- OAuth2/OIDC authorization code flow with PKCE for SPAs
-- Token refresh mechanism for SPAs
-- Secure token storage and handling in browser context
-- Integration with Chainlit's authentication requirements
-
----
-
-### 3. Agent Logic
-
-**Status**: Not implemented
-
-The core agent functionality is missing. The application currently only has example throttle calculation logic, but no actual LLM agent implementation.
-
-
----
-
-### 4. Background Worker System for Job Offloading
-
-**Status**: Not implemented
-
-Currently, all processing happens synchronously within the FastAPI request handlers. Missing:
-
-- **Dedicated worker processes** running separately from the FastAPI app
-- Job queue system
-- Job scheduling and distribution
-- Worker health monitoring
-- Job status tracking and result retrieval
-- Integration between FastAPI and worker processes
-
-
-
----
-
-## Architecture Considerations
-
-### Current Architecture
-```
-FastAPI App (asynchronous request handling)
-  ├── Authentication Middleware (JWT validation)
-  ├── REST API endpoints
-  └── Direct service calls (no async offloading)
+```text
+browser -> Python agent -> recommendation MCP -> Rust recommendation API
+                        -> reservation MCP -> NestJS reservation API
 ```
 
-### Target Architecture
-```
-FastAPI App (API gateway)
-  ├── Authentication (JWT + PKCE)
-  ├── REST API endpoints
-  ├── Chainlit Integration
-  └── Job Queue Client
-        │
-        ▼
-Worker Processes (separate processes/containers)
-  ├── Agent Execution Engine
-  ├── LLM Integration
-  └── Job Result Storage
-```
+Adopt behavior in small slices rather than copying the branch wholesale.
 
----
+### 3. MCP Client Boundary
 
-## Notes
+Status: Not implemented.
 
-- The existing DI infrastructure makes it straightforward to add new components (workers, agent services, etc.)
-- Token validation can be extended to support PKCE without major refactoring
-- The current architecture follows clean architecture principles, which should be maintained when adding new features
-- Consider using async task queues (e.g., `arq`, `dramatiq`) for better integration with FastAPI's async nature
+Add narrow application ports and infrastructure adapters for:
 
+- Recommendation MCP.
+- Reservation MCP.
 
+Start with fake-client tests. Preserve trace/correlation context and avoid
+logging secrets or full prompt/reservation payloads.
+
+### 4. Runtime Persistence And Queue Strategy
+
+Status: Deferred.
+
+The in-memory runtime is useful for local development and tests. A future issue
+must decide whether the first AWS demo uses Piccolo/PostgreSQL plus a broker,
+SQS, sidecar MCPs, independent MCP services, or another workflow runtime.
+
+### 5. Legacy Code Removal
+
+Status: Deferred.
+
+Remove or archive throttle/game/grid/navigation/genetic-path code after the
+movie reservation agent API and MCP runtime no longer depend on it.
+
+## Testing Priorities
+
+- Unit tests for pure domain/application behavior.
+- Thin integration tests for FastAPI routes, middleware, DTO mapping, and DI.
+- Worker/runtime tests that assert emitted events and folded state.
+- Cancellation tests that cover checkpoint behavior and terminal projection.
+- Fake MCP client contract tests before local end-to-end smoke tests.
+
+## Near-term Follow-up Issues
+
+1. Stabilize the proven movie reservation demo flow in the current repo.
+2. Define and implement the browser/platform agent API contract.
+3. Introduce MCP client ports/adapters and fake-client tests.
+4. Remove or isolate legacy throttle/game/navigation routes and DI wiring.
+5. Decide durable runtime state and queue strategy for the first AWS demo.

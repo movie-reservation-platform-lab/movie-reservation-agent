@@ -1,0 +1,7 @@
+interface:
+  display_name: "Learn By Doing"
+  short_description: "Make the human code the core logic"
+  default_prompt: "Use $learn-by-doing to guide me through this coding task while making me implement the core logic myself."
+
+policy:
+  allow_implicit_invocation: false

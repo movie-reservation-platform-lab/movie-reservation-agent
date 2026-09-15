@@ -1,7 +1,0 @@
-interface:
-  display_name: "Clean Architecture"
-  short_description: "Keep FastAPI service boundaries clear"
-  default_prompt: "Use $clean-architecture when changing API, service, domain, infrastructure, worker, event-log, or svcs registrar boundaries."
-
-policy:
-  allow_implicit_invocation: true

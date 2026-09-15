@@ -72,3 +72,7 @@ Generated files include a header noting they were produced by `.ai/sync.sh`.
 - Edit canonical files under `.ai/`, not generated outputs.
 - If you add a new skill, create `.ai/skills/<name>/SKILL.md` and `.ai/meta/<name>.yaml`.
 - If you add a new agent, include YAML frontmatter with at least `name`, `codexName`, `description`, and `nicknames`.
+
+Only `.ai/` is versioned for AI guidance. Tool-specific directories and root
+`AGENTS.md` are generated locally and ignored by Git. Run the sync command
+after cloning or updating canonical guidance.

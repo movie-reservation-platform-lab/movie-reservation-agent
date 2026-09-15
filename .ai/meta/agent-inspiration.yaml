@@ -1,0 +1,3 @@
+type: skill
+skillName: agent-inspiration
+description: "Use to retrieve focused local inspiration from curated agent reference repositories and pattern notes before raw repo inspection or internet research; validate externally only when requested or local knowledge is missing/stale."

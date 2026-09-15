@@ -1,7 +1,0 @@
-interface:
-  display_name: "FastAPI Service"
-  short_description: "Build FastAPI code that fits this repo"
-  default_prompt: "Use $fastapi-service when editing FastAPI routes, DTOs, middleware, svcs DI, async service code, or API tests."
-
-policy:
-  allow_implicit_invocation: true

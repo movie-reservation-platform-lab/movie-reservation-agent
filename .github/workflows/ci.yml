@@ -16,6 +16,7 @@ concurrency:
 
 defaults:
   run:
+    shell: bash
     working-directory: llm_agent
 
 jobs:
@@ -165,10 +166,83 @@ jobs:
         run: uv sync --frozen
 
       - name: Build production image
-        run: docker build --target prod --tag movie-reservation-agent:ci .
+        run: |
+          mkdir -p "$RUNNER_TEMP/reservation-agent-smoke"
+          docker build --platform linux/amd64 --target prod --tag movie-reservation-agent:ci . \
+            2>&1 | tee "$RUNNER_TEMP/reservation-agent-smoke/build.log"
 
       - name: Verify local deterministic workflow
-        run: bash automation/container_smoke.sh movie-reservation-agent:ci
+        run: |
+          bash automation/container_smoke.sh movie-reservation-agent:ci "$RUNNER_TEMP/reservation-agent-smoke" \
+            2>&1 | tee "$RUNNER_TEMP/reservation-agent-smoke/smoke.log"
+
+      - name: Retain production smoke diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reservation-agent-smoke-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reservation-agent-smoke/
+          if-no-files-found: error
+          retention-days: 14
+
+  container-security-check:
+    name: container-security-check
+    if: github.event_name != 'push' || github.ref != 'refs/heads/main' || github.repository != 'movie-reservation-platform-lab/movie-reservation-agent'
+    needs:
+      - quality
+      - automation-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check out reviewed shared security tooling
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: movie-reservation-platform-lab/movie-platform-actions
+          ref: bb40579c285df0b581c48b10f9b34574d5c78639
+          path: .platform-actions
+          persist-credentials: false
+
+      - name: Set up Node.js for shared security tooling
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+
+      - name: Build production image for vulnerability check
+        run: |
+          mkdir -p "$RUNNER_TEMP/reservation-agent-pr-security"
+          docker build --platform linux/amd64 --target prod --tag movie-reservation-agent:pr-security llm_agent \
+            2>&1 | tee "$RUNNER_TEMP/reservation-agent-pr-security/build.log"
+
+      - name: Evaluate complete report with current approved policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node .platform-actions/local-tools/container-security/lib/scan.mjs \
+            movie-reservation-agent:pr-security \
+            --evidence-version v1alpha3 --component reservation-agent \
+            --output-dir "$RUNNER_TEMP/reservation-agent-pr-security" \
+            2>&1 | tee "$RUNNER_TEMP/reservation-agent-pr-security/scan.log"
+
+      - name: Retain PR vulnerability diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reservation-agent-pr-vulnerability-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reservation-agent-pr-security/
+          if-no-files-found: error
+          retention-days: 14
 
   publish-image:
     name: publish immutable GHCR image
@@ -202,7 +276,7 @@ jobs:
 
       - name: Prepare canonical candidate
         id: candidate
-        uses: movie-reservation-platform-lab/movie-platform-actions/actions/prepare-container-candidate@9b7b5a601367a45356687a0e1bf1d1638d62aca9 # shared evidence v1alpha2
+        uses: movie-reservation-platform-lab/movie-platform-actions/actions/prepare-container-candidate@bb40579c285df0b581c48b10f9b34574d5c78639 # shared evidence v1alpha3
         with:
           component: reservation-agent
 
@@ -229,8 +303,9 @@ jobs:
             org.opencontainers.image.version=${{ steps.candidate.outputs.tag }}
 
       - name: Attest and publish security evidence
-        uses: movie-reservation-platform-lab/movie-platform-actions/actions/container-evidence@9b7b5a601367a45356687a0e1bf1d1638d62aca9 # shared evidence v1alpha2
+        uses: movie-reservation-platform-lab/movie-platform-actions/actions/container-evidence@bb40579c285df0b581c48b10f9b34574d5c78639 # shared evidence v1alpha3
         with:
+          evidence-version: v1alpha3
           component: reservation-agent
           digest: ${{ steps.build.outputs.digest }}
           github-token: ${{ github.token }}

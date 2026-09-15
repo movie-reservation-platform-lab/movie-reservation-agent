@@ -1,7 +1,0 @@
-interface:
-  display_name: "REST API Design"
-  short_description: "Design consistent FastAPI REST endpoints"
-  default_prompt: "Use $rest-api-design when designing or changing REST endpoints, HTTP methods, status codes, request/response DTOs, OpenAPI docs, or API tests."
-
-policy:
-  allow_implicit_invocation: true

@@ -1,80 +1,95 @@
-# Implementation Plan: container evidence admission parity
+# Implementation Plan: agent container security evidence
 
 ## 1. Summary
 
-Issue #15: adopt the organization-owned container evidence actions, independently of runtime changes.
+Resume #15 / PR #17 with reviewed actions bb40579c285df0b581c48b10f9b34574d5c78639, v1alpha3 evidence, a read-only PR production-image scan, and agent-specific image remediation.
 
 ## 2. Goals
 
-Publish signed, subject-bound security evidence for reservation-agent, sufficient for independent environment verification.
+Preserve and include local docs/skills, retain complete diagnostics, validate the agent image, update existing PR #17 with [ai] prefixes and actual results.
 
 ## 3. Non-goals
 
-AWS changes, deployment, environment selection, runtime changes, static OCI admission, replacing business tests or permanent security policy.
+Business/API changes, deployment, AWS changes, environment admission, exemptions and canonical image publication during PR preparation.
 
 ## 4. Current State
 
-.github/workflows/ci.yml owns publish-image, quality/smoke prerequisites and its existing display name. llm_agent/automation/tests/test_release_contract.py protects publication behavior. The current image attestation is not a complete downloadable security-evidence package.
+The issue branch already has shared v2 evidence in .github/workflows/ci.yml. Production uses Bookworm and includes uv, curl and source. llm_agent/automation/container_smoke.sh exercises the deterministic reservation flow with local MCP fakes but deletes diagnostics. Local docs/skills are on a separate old checkout. Merged recommendation-MCP #11 and reservation-MCP #9 demonstrate the requested v3 pattern.
 
 ## 5. Requirements and Assumptions
 
-Keep canonical push/main publication and existing quality/check identities. Add repository guard, non-cancelling publication, attempt tags, single linux/amd64 provenance:false build, full SHA actions and exact digest evidence. Node 24 is installed in the publisher, with no producer dependency install there. Live scans and environment App/IAM readiness remain operational questions, not assumptions of success.
+Confirmed: use the exact reviewed SHA; keep existing quality and publication check names; PRs cannot publish; keep .ai as canonical and ignore generated tooling. Unknowns resolved through execution: actual agent CVEs, required dependency upgrades, installed-image compatibility. Original checkout remains untouched while its changes are merged into the issue worktree.
 
 ## 6. Proposed Design
 
-Build stays in publish-image; shared preparation runs before login/build and evidence consumes its digest afterwards. The pinned composite owns verification/scans/policy/emission/attestations/upload. Environments owns admission decisions. No new runtime abstraction is needed; boundaries stay outside application code.
+Keep security orchestration outside FastAPI/domain layers. Add container-security-check with contents:read only, linux/amd64 prod build, shared local v3 evaluator and full-directory artifact upload after failures. Main publication consumes the exact digest using pinned v3 composite actions. Isolate build tooling from the runtime; use compatible Python bases and a non-editable environment. Remediate scan-confirmed OS findings with Trixie and refreshed perl-base following MCP implementations; update locked Python dependencies for demonstrated findings. FastAPI/Starlette security updates also require compatible OpenTelemetry instrumentation; upgrade that family together and verify trace/audit correlation tests. Preserve build, smoke and policy logs.
 
 ## 7. Alternatives Considered
 
-Copy reservation-service tooling here: initially simple but duplicates security implementation; rejected. Reusable workflow: reduces YAML but changes signer/check boundaries; defer. Adopt pinned composite within existing job: chosen, keeps repository-owned gates and independently reviewable rollback.
+- Copy evaluator code: easy initially, duplicates security policy; rejected.
+- Shared reviewed tooling in existing jobs: preserves ownership and signer identities; chosen.
+- Upgrade all dependencies blindly: broader compatibility risk; prefer scan-directed updates.
 
 ## 8. API / Interface Changes
 
-New ci.movie-platform.dev/v1alpha2 four-file candidate package. Artifact: reservation-agent-security-evidence-RUN-attempt-ATTEMPT. Discovery tag gains run/attempt suffix; immutable digest remains identity. Job display name is retained and recorded in evidence. Shared contract documentation is in movie-reservation-platform-lab/movie-platform-actions#2 and this producer pins commit 9b7b5a601367a45356687a0e1bf1d1638d62aca9.
+No application API changes. Evidence becomes ci.movie-platform.dev/v1alpha3 with the same four canonical files and embedded policy evaluation. vulnerability-policy.json is diagnostic only. PR artifacts are diagnostics only. Add optional smoke output directory for retained diagnostics.
 
 ## 9. Data Model / Persistence Changes
 
-None to runtime data. Evidence expires after 14 days. Older successful runs cannot be reconstructed or admitted without their required evidence.
+None. Hosted artifacts retain 14 days; old v2 runs do not substitute for fresh v3 acceptance.
 
 ## 10. Security, Privacy, and Abuse Considerations
 
-Guard canonical repository, never publish from PRs/forks/dispatch. Keep write permissions only in the publisher, checkout credentials disabled, explicit immutable pins, no AWS secrets/config. Shared code is supply-chain code requiring review. Missing provenance, mismatched subject or CRITICAL findings fail closed.
+Canonical repository/main/push guard only; write permissions stay in publish-image. Disable persisted checkout credentials. Use reviewed full SHAs. Scanner uses current central approved policy; fail closed on evaluation errors and unexempted CRITICAL findings. Never upload tokens or local-change backups. No exemption requested.
 
 ## 11. Performance, Scalability, and Reliability Considerations
 
-Bound publication to 40 minutes including two five-minute scans. Preserve PR cancellation but serialize push/main without cancellation across image push and attestation. Attempt-specific tags avoid rerun ambiguity. Actual latency/scan results must be measured after merge.
+Bound CI timeouts, preserve PR cancellation and serialized main publication. Dedicated PR scan adds one build but avoids canonical duplicate scans. Complete diagnostics survive rejected policy and smoke failures. Production copies only installed application dependencies.
 
 ## 12. Implementation Steps
 
-1. Update .github/workflows/ci.yml guards, concurrency and action pins; preserve quality/build inputs.
-2. Add prepare/evidence calls pinned to shared #13; use exact build digest.
-3. Update llm_agent/automation/tests/test_release_contract.py to assert shared interface, pin consistency, ordering and permission boundaries.
-4. Run repository checks; independently review before PR. Do not dispatch live publication.
+1. Back up original changes under ignored .local-container-security and reconcile docs/skills in the issue worktree.
+2. Update workflow shared pins/v3 input and read-only security job, with correct llm_agent build context and root tooling path.
+3. Build/scan baseline; remediate llm_agent/Dockerfile and scan-confirmed pyproject.toml/uv.lock dependencies.
+4. Strengthen automation/container_smoke.sh contents checks and diagnostic retention; add behavior-focused failure-path tests and workflow boundary assertions.
+5. Ignore/untrack generated assistant directories and AGENTS.md; regenerate locally from .ai; update documentation.
+6. Run runtime/automation tests, scoped CI lint/format/compile, production smoke and shared v3 scan; retain actual results.
+7. Commit/push with [ai], update existing PR #17, inspect hosted checks and download diagnostic artifact.
 
 ## 13. Testing Strategy
 
-Run: cd llm_agent && uv sync --frozen && uv run --frozen --no-sync pytest tests automation/tests.
-Keep contract tests separate from runtime tests. Shared action tests cover behavior; repository tests cover caller wiring. Real OIDC/registry acceptance requires a canonical successful main run after merge.
+From llm_agent: uv sync --frozen; uv run --frozen --no-sync pytest tests automation/tests. Run exact workflow lint/format/compile targets. Build linux/amd64 prod, smoke health and full reservation sequence with local MCP fakes, verify UID and installed contents. Scan baseline and remediated images with reviewed Node 24 helper and current central v3 policy. Test failure retention without real external dependencies.
 
 ## 14. Rollout / Migration Plan
 
-Depends on https://github.com/movie-reservation-platform-lab/movie-platform-actions/pull/2 at commit 9b7b5a601367a45356687a0e1bf1d1638d62aca9. Merge the shared action first, then this PR. Add matching environment verification separately. Record fresh run/attempt and immutable digest; do not infer deployment. Rollback by reverting this workflow/pin change without changing runtime code.
+Actions #13 is merged at the requested SHA. Environment reader/admission support is separately tracked by movie-platform-environments#82. Owner merge triggers fresh canonical publication; PR success does not prove publication/admission. Roll back image/workflow changes by reverting commits.
 
 ## 15. Risks and Mitigations
 
-CRITICAL vulnerabilities may block first run: inspect rejected diagnostics, never weaken gate. Static/image confusion: explicit job/profile. Shared drift: full SHA pin. Registry copy alone is not equivalent to admission; consumer rollout must close that gap.
+| Risk | Impact | Likelihood | Mitigation |
+|---|---|---|---|
+| Agent differs from siblings | High | Medium | Scan its own image before and after |
+| Dependency incompatibility | High | Medium | Full runtime suite and installed-image smoke |
+| Lost local edits | High | Low | Backup and merge; leave original checkout intact |
+| PR gains publication authority | High | Low | Read-only job and guard contract tests |
+| Policy/network failure | Medium | Medium | Fail closed and upload complete diagnostics |
 
 ## 16. Done Criteria
 
-Local workflow and regression checks green, reviewed public diff, shared pin verified, no sensitive files. Live success is a later acceptance step, not claimed by this PR.
+Local changes included, generated tooling untracked, agent image built/smoked/scanned, blocking findings remediated, remaining findings disclosed, tests green, hosted checks inspected, PR #17 updated.
 
 ## 17. Review Checklist
 
-- [x] Scope, ownership, alternatives, compatibility and rollback explicit.
-- [x] Repository-specific build and test targets inspected.
-- [x] Final tests and independent review complete (local checks passed; no live publication).
-- [ ] Live canonical acceptance (operator rollout).
+- [x] Requirements, non-goals and repository conventions checked.
+- [x] Alternatives, security, reliability and rollback explicit.
+- [x] Ordered implementation and validation commands specified.
+- [x] Actual local image results recorded in `docs/knowledge/container-security-validation.md`.
+- [ ] Hosted PR checks and artifact inspected.
 
 ## 18. Handoff Prompt for Implementation Agent
 
-Implement this plan in .github/workflows/ci.yml and llm_agent/automation/tests/test_release_contract.py. Preserve runtime behavior and stable quality checks. Use the shared reviewed commit, update docs and run the commands above. Do not publish images, change AWS configuration or admit/deploy candidates as part of PR preparation.
+Implement this plan in the named files, preserving original local work and application boundaries. Use the reviewed shared SHA, scan the agent image, retain diagnostics and update PR #17. Run the verification above. No image publication or AWS changes during PR preparation.
+
+## KB basis
+
+Used `/home/patex1987/Documents/programming_kb/patterns/Multi-Stage Python Container Builds with uv.md`: compatible interpreter bases, non-editable runtime environment, isolated tooling and final-image entry-point smoke.

@@ -70,4 +70,3 @@ case "$command" in
     exit 2
     ;;
 esac
-

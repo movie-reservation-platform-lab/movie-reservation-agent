@@ -87,7 +87,9 @@ deterministic happy path without an LLM, cloud credentials, or external API.
 
 Incoming `traceparent`, `tracestate`, `X-Correlation-Id`, and `X-Request-Id`
 values are propagated to MCP calls. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export
-agent traces through OTLP/HTTP.
+agent traces and metrics through OTLP/HTTP. Native FastAPI duration metrics and
+the bounded request-outcome counter are documented in
+[Native HTTP metrics](../docs/architecture/native-http-metrics.md).
 
 The optional authentication audit demo adds `POST /demo/auth/login` when
 `DEMO_AUTH_ENABLED=true` and explicit demo credentials are supplied. It emits

@@ -11,12 +11,12 @@ from llm_agent.api.http.v1.routes.throttle_steps_calculator import throttle_rout
 from llm_agent.application.authentication.manager import AsyncAuthenticationManager
 from llm_agent.application.execution_context import ExecutionContextEnricher
 from llm_agent.core.log_config import configure_logging
-from llm_agent.core.telemetry import instrument_for_telemetry
+from llm_agent.core.telemetry import TelemetryRuntime, instrument_for_telemetry
 from llm_agent.di.fastapi_lifespan import di_lifespan
 from llm_agent.infrastructure.db.piccolo_llm_agent_app.programmatic_migration import maybe_migrate
 
 
-def create_app(*, registry: svcs.Registry) -> fastapi.FastAPI:
+def create_app(*, registry: svcs.Registry, telemetry_runtime: TelemetryRuntime | None = None) -> fastapi.FastAPI:
     """
     Construct the FastAPI application using an explicitly provided DI registry.
 
@@ -32,7 +32,7 @@ def create_app(*, registry: svcs.Registry) -> fastapi.FastAPI:
     app.include_router(router=throttle_router, prefix="/api/v1/throttle", tags=["throttle"])
     app.include_router(router=agent_router, prefix="/api/v1/agent", tags=["agent"])
 
-    instrument_for_telemetry(app)
+    instrument_for_telemetry(app, runtime=telemetry_runtime)
 
     # app.add_exception_handler(Exception, exception_handler)
     # app.add_exception_handler(500, exception_handler)

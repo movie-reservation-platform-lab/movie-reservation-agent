@@ -8,7 +8,7 @@ from llm_agent.api.http.v1.routes.demo import demo_router
 from llm_agent.api.http.v1.routes.demo_auth import demo_auth_router
 from llm_agent.application.audit.authentication import AuditSink, AuditSource
 from llm_agent.core.log_config import configure_logging
-from llm_agent.core.telemetry import instrument_for_telemetry
+from llm_agent.core.telemetry import TelemetryRuntime, instrument_for_telemetry
 from llm_agent.demo.auth_config import DemoAuthSettings
 from llm_agent.demo.config import DemoAgentSettings
 from llm_agent.demo.models import DemoMcpToolClient
@@ -24,6 +24,7 @@ def create_demo_app(
     mcp_client: DemoMcpToolClient | None = None,
     auth_settings: DemoAuthSettings | None = None,
     audit_sink: AuditSink | None = None,
+    telemetry_runtime: TelemetryRuntime | None = None,
 ) -> fastapi.FastAPI:
     configure_logging()
     runtime_settings = settings or DemoAgentSettings()
@@ -53,7 +54,7 @@ def create_demo_app(
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": runtime_settings.service_name}
 
-    instrument_for_telemetry(app)
+    instrument_for_telemetry(app, runtime=telemetry_runtime)
     return app
 
 

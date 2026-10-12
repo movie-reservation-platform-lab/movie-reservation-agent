@@ -8,6 +8,7 @@ Currently available:
 - `fastapi-service`: build FastAPI service code that fits this repo's Python, Pydantic, async, and `svcs` conventions.
 - `principal-engineer-planner`: plan complex engineering work before implementation and write the plan under `docs/plans/`.
 - `programming-kb`: retrieve focused local programming and architecture knowledge from `/home/patex1987/Documents/programming_kb`.
+- `python-control-flow`: write and review Python with flat control flow, guard clauses, explicit logic, and behavior-preserving readability refactors.
 - `rest-api-design`: design consistent REST resources, HTTP methods, status codes, request/response contracts, OpenAPI docs, and API tests.
 - `testing`: write behavior-focused Python tests with fake-first pytest, async, FastAPI, and `svcs` DI patterns.
 

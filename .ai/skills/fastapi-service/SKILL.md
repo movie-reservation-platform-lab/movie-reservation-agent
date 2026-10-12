@@ -34,6 +34,7 @@ Use this skill to keep API and service code aligned with this repo's Python/Fast
 - Use descriptive snake_case names, especially boolean names with `is_`, `has_`, `can_`, or `should_`.
 - Prefer object-in/object-out APIs for complex calls: accept a typed request/config object and return a typed result object.
 - Avoid forcing a functional rewrite where existing classes intentionally model service boundaries, registrars, or lifecycle-owned dependencies.
+- For nesting, guard clauses, helper extraction, and readability refactors, use the `python-control-flow` skill.
 
 ## Error Handling
 

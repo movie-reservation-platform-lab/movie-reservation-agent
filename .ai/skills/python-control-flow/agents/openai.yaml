@@ -1,0 +1,7 @@
+interface:
+  display_name: "Python Control Flow"
+  short_description: "Flat, readable Python control flow"
+  default_prompt: "Use $python-control-flow when writing, refactoring, or reviewing Python code for nesting, guard clauses, early returns, helper extraction, or behavior-preserving readability changes."
+
+policy:
+  allow_implicit_invocation: true

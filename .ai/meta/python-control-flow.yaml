@@ -1,0 +1,3 @@
+type: skill
+skillName: python-control-flow
+description: "Use when writing, refactoring, or reviewing Python code for control flow and readability: nesting, guard clauses, early returns, redundant else, helper extraction, validation ordering, and behavior-preserving refactors."

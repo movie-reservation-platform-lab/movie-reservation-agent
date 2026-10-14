@@ -2,7 +2,7 @@
   "schema_version": "platform-audit/1",
   "transport": {
     "stdout": "Exactly one compact JSON line: {\"audit\":<event>}; no logger message wrapping or pretty printing.",
-    "archive": "Router extracts pure event (no ECS/Fluent Bit envelope) and Firehose appends newline."
+    "archive": "Router extracts the pure event; Fluent Bit Firehose output serializes one newline-delimited JSON record."
   },
   "event": {
     "activity_id": 99,
